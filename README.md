@@ -1,0 +1,52 @@
+# Lorcana Collection
+
+Disney Lorcana TCG card database + collection manager on the ODIN k3s cluster.
+
+- **Web UI:** http://192.168.1.154:30710 — browse cards, upload Dreamborn.ink exports,
+  decks, stats.
+- **API:** FastAPI behind the same NodePort under `/api` (nginx same-origin proxy).
+- **DB:** database `lorcana` on the shared odin-prime PostgreSQL
+  (`postgresql.odin-prime.svc:5432`, browse via pgAdmin :30880).
+- **Catalog:** seeded from the [Lorcast API](https://lorcast.com/docs/api); weekly
+  price-refresh CronJob (Mon 06:00).
+- **Claude:** `lorcana` domain in [odin-mcp](../odin-mcp/) exposes search, stats,
+  missing-card, and deck/buildable tools.
+
+## Collection import
+
+Export CSV from the Dreamborn.ink app (columns `Name, Normal, Foil, Color, Rarity,
+Set, Card Number`; `.xlsx` with the same header also works) and upload it on the
+**Upload** page.
+
+- **Replace** — full snapshot: zeroes everything, then sets the file's counts.
+  Idempotent; re-uploading the same file is harmless. Use this for full-collection
+  exports (the normal Dreamborn workflow).
+- **Merge** — adds counts on top (for partial scans). Re-merging the exact same file
+  is refused (409) unless forced.
+- **Dry run** previews matching + before/after totals without writing.
+- Cards are matched by set + collector number, with a set-scoped name fallback;
+  unmatched rows are reported and land in the `imports` audit table. Unknown
+  Dreamborn set labels get fixed by adding a row to `set_aliases`
+  (`db/migrations/002_set_aliases_seed.sql`).
+
+## Deploy / operate
+
+```bash
+# build + push images (bump the date suffix AND the tags in deploy/*/deployment.yaml + jobs)
+buildah bud --format docker -t localhost:30500/lorcana/api:fastapi-YYYYMMDD api/
+buildah push --tls-verify=false localhost:30500/lorcana/api:fastapi-YYYYMMDD
+buildah bud --format docker -t localhost:30500/lorcana/web:nginx-YYYYMMDD web/
+buildah push --tls-verify=false localhost:30500/lorcana/web:nginx-YYYYMMDD
+
+./deploy/apply.sh          # namespace, secret (once), db bootstrap (once), migrations, rollout
+
+# seed / refresh the card catalog (rerun after new set releases)
+kubectl -n lorcana delete job lorcana-seed --ignore-not-found
+kubectl apply -f deploy/jobs/seed-job.yaml
+kubectl -n lorcana logs -f job/lorcana-seed
+```
+
+The one-time DB bootstrap runs `db/migrations/000_role_db.sql` through the odin-prime
+postgres pod (`kubectl exec`); the app role password lives only in the `lorcana-db`
+secret. Schema migrations (`001+`) are all `IF NOT EXISTS`-idempotent and re-applied
+by a Job on every `apply.sh`.

@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lorcana-migrate
+  namespace: lorcana
+  labels:
+    app: lorcana-migrate
+    ai.odin.managed: "true"
+    ai.odin.component: db-migrate
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: lorcana-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: localhost:30500/odin-prime/postgresql:odin-latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              for f in $(ls /migrations/0*.sql | sort); do
+                echo "== applying $f"
+                psql -h postgresql.odin-prime.svc.cluster.local -U lorcana -d lorcana \
+                     -v ON_ERROR_STOP=1 -f "$f"
+              done
+              echo "migrations complete"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lorcana-db
+                  key: PGPASSWORD
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+      volumes:
+        - name: migrations
+          configMap:
+            name: lorcana-migrations

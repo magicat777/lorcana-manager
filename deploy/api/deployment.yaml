@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lorcana-api
+  namespace: lorcana
+  labels:
+    app: lorcana-api
+    ai.odin.managed: "true"
+    ai.odin.component: api
+    ai.odin.loki.app_category: lorcana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lorcana-api
+  template:
+    metadata:
+      labels:
+        app: lorcana-api
+        ai.odin.managed: "true"
+        ai.odin.component: api
+        ai.odin.loki.app_category: lorcana
+    spec:
+      containers:
+        - name: api
+          image: localhost:30500/lorcana/api:fastapi-20260804e
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: lorcana-db
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30

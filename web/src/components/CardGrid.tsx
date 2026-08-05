@@ -1,0 +1,59 @@
+import { Link } from 'react-router-dom'
+import type { Card } from '../types'
+
+export const INK_COLORS: Record<string, string> = {
+  Amber: '#f5b800',
+  Amethyst: '#9a5cb4',
+  Emerald: '#35a047',
+  Ruby: '#d2405a',
+  Sapphire: '#3a7fc2',
+  Steel: '#8a9aa5',
+}
+
+export function InkDots({ ink, inks }: { ink: string | null; inks?: string[] | null }) {
+  const list = inks?.length ? inks : ink ? [ink] : []
+  return (
+    <>
+      {list.map((i) => (
+        <span key={i} className="inkdot" style={{ background: INK_COLORS[i] ?? 'transparent' }} />
+      ))}
+    </>
+  )
+}
+
+export default function CardGrid({ cards }: { cards: Card[] }) {
+  return (
+    <div className="cardgrid">
+      {cards.map((c) => {
+        const owned = c.qty_normal + c.qty_foil > 0
+        return (
+          <Link
+            key={c.id}
+            to={`/cards/${c.set_code}/${c.collector_number}`}
+            className={`cardtile ${owned ? '' : 'unowned'}`}
+            title={c.full_name}
+          >
+            {c.image_normal ? (
+              <img src={c.image_normal} alt={c.full_name} loading="lazy" />
+            ) : (
+              <div style={{ aspectRatio: '5/7', display: 'grid', placeItems: 'center' }}>
+                {c.full_name}
+              </div>
+            )}
+            <span className="qty">
+              {c.qty_normal > 0 && <span className="badge">{c.qty_normal}</span>}
+              {c.qty_foil > 0 && <span className="badge foil">✦{c.qty_foil}</span>}
+            </span>
+            <div className="label">
+              <span>
+                <InkDots ink={c.ink} inks={c.inks} />
+                {c.set_code}·{c.collector_number}
+              </span>
+              <span className="muted">{c.rarity?.replace('_', ' ')}</span>
+            </div>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}

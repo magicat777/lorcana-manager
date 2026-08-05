@@ -1,0 +1,86 @@
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { get, money, send } from '../api'
+import { InkDots } from '../components/CardGrid'
+import type { Card } from '../types'
+
+export default function CardDetail() {
+  const { set, number } = useParams()
+  const [card, setCard] = useState<Card | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    get<Card>(`/cards/${set}/${number}`).then(setCard).catch((e) => setError(String(e)))
+  }, [set, number])
+
+  const bump = async (field: 'qty_normal' | 'qty_foil', delta: number) => {
+    if (!card) return
+    const next = {
+      qty_normal: card.qty_normal,
+      qty_foil: card.qty_foil,
+      [field]: Math.max(0, card[field] + delta),
+    }
+    setSaving(true)
+    try {
+      await send('PUT', `/collection/${card.id}`, next)
+      setCard({ ...card, ...next })
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error) return <p className="error">{error}</p>
+  if (!card) return <p className="muted">Loading…</p>
+
+  return (
+    <div>
+      <p>
+        <Link to="/">← back to cards</Link>
+      </p>
+      <div className="detail">
+        {card.image_large && <img src={card.image_large} alt={card.full_name} />}
+        <div style={{ maxWidth: 560 }}>
+          <h1 style={{ marginBottom: 0 }}>{card.full_name}</h1>
+          <p className="muted">
+            {card.set_name} · #{card.collector_number} · {card.rarity?.replace('_', ' ')}
+            {(card.inks?.length || card.ink) && (
+              <>
+                {' · '}
+                <InkDots ink={card.ink} inks={card.inks} />
+                {(card.inks?.length ? card.inks : [card.ink]).join(' / ')}
+              </>
+            )}
+          </p>
+          <div className="statrow">
+            {card.cost != null && <div className="stat"><div className="k">Cost</div><div className="v">{card.cost}{card.inkwell ? ' ◉' : ''}</div></div>}
+            {card.strength != null && <div className="stat"><div className="k">Strength</div><div className="v">{card.strength}</div></div>}
+            {card.willpower != null && <div className="stat"><div className="k">Willpower</div><div className="v">{card.willpower}</div></div>}
+            {card.lore != null && <div className="stat"><div className="k">Lore</div><div className="v">{card.lore}</div></div>}
+            <div className="stat"><div className="k">Price</div><div className="v">{money(card.price_usd)}</div></div>
+            <div className="stat"><div className="k">Foil</div><div className="v">{money(card.price_usd_foil)}</div></div>
+          </div>
+          {card.body_text && <p style={{ whiteSpace: 'pre-wrap' }}>{card.body_text}</p>}
+          {card.flavor_text && <p className="muted" style={{ fontStyle: 'italic' }}>{card.flavor_text}</p>}
+          <div className="panel">
+            <h3 style={{ marginTop: 0 }}>In collection</h3>
+            <div className="qtyedit">
+              <span style={{ width: 70 }}>Normal</span>
+              <button className="secondary" disabled={saving} onClick={() => bump('qty_normal', -1)}>−</button>
+              <strong>{card.qty_normal}</strong>
+              <button className="secondary" disabled={saving} onClick={() => bump('qty_normal', 1)}>+</button>
+            </div>
+            <div className="qtyedit">
+              <span style={{ width: 70 }}>Foil ✦</span>
+              <button className="secondary" disabled={saving} onClick={() => bump('qty_foil', -1)}>−</button>
+              <strong>{card.qty_foil}</strong>
+              <button className="secondary" disabled={saving} onClick={() => bump('qty_foil', 1)}>+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

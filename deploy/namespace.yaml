@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lorcana
+  labels:
+    ai.odin.managed: "true"
+    ai.odin.loki.app_category: lorcana

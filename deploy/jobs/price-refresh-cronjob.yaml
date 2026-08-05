@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lorcana-price-refresh
+  namespace: lorcana
+  labels:
+    app: lorcana-price-refresh
+    ai.odin.managed: "true"
+    ai.odin.component: price-refresh
+spec:
+  schedule: "0 6 * * 1"   # weekly, Monday 06:00
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: lorcana-price-refresh
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: refresh
+              image: localhost:30500/lorcana/api:fastapi-20260804e
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.jobs.refresh_prices"]
+              envFrom:
+                - secretRef:
+                    name: lorcana-db
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi

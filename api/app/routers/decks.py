@@ -16,11 +16,48 @@ class DeckIn(BaseModel):
     name: str
     notes: str = ""
     cards: list[DeckCard] = []
+    source: str = "api"       # provenance: who wrote this ('mcp', 'webui', 'api')
 
 
 class DeckImportIn(BaseModel):
     name: str
     text: str
+    notes: str = ""
+    overwrite: bool = False   # replace an existing deck of the same name
+    source: str = "api"
+    strict: bool = False      # refuse the write if validation warnings exist
+
+
+def _validate(cards: list[dict]) -> list[str]:
+    """Deck-legality warnings: 60 cards, max 4 per full name, at most 2 inks
+    (a dual-ink card is fine if it shares an ink with the deck's two)."""
+    warnings = []
+    total = sum(c["qty"] for c in cards)
+    if total != 60:
+        warnings.append(f"{total} cards — constructed decks are exactly 60")
+    by_name: dict[str, int] = {}
+    for c in cards:
+        by_name[c["full_name"]] = by_name.get(c["full_name"], 0) + c["qty"]
+    for name, qty in sorted(by_name.items()):
+        if qty > 4:
+            warnings.append(f"{qty} copies of {name!r} (max 4 per name)")
+    mono: set[str] = set()
+    duals: list[tuple[str, set[str]]] = []
+    for c in cards:
+        inks = c.get("inks") or ([c["ink"]] if c.get("ink") else [])
+        if len(inks) == 1:
+            mono.add(inks[0])
+        elif len(inks) > 1:
+            duals.append((c["full_name"], set(inks)))
+    if len(mono) > 2:
+        warnings.append(f"{len(mono)} inks ({', '.join(sorted(mono))}) — decks may use at most 2")
+    elif len(mono) == 2:
+        for name, dinks in duals:
+            if not dinks & mono:
+                warnings.append(
+                    f"{name!r} ({'/'.join(sorted(dinks))}) shares no ink with the deck's "
+                    f"{'/'.join(sorted(mono))}")
+    return warnings
 
 
 def _deck_row(deck_id: int) -> dict:
@@ -40,6 +77,7 @@ def _deck_row(deck_id: int) -> dict:
         (deck_id,),
     )
     deck["card_total"] = sum(c["qty"] for c in deck["cards"])
+    deck["validation"] = _validate(deck["cards"])
     return deck
 
 
@@ -69,8 +107,8 @@ def create_deck(body: DeckIn):
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO decks (name, notes) VALUES (%s,%s) RETURNING id",
-                    (body.name, body.notes),
+                    "INSERT INTO decks (name, notes, created_source) VALUES (%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source),
                 )
             except Exception:
                 raise HTTPException(409, f"deck {body.name!r} already exists")
@@ -85,21 +123,65 @@ def import_deck(body: DeckImportIn):
     entries, bad_lines = deck_import.parse_deck_text(body.text)
     if not entries:
         raise HTTPException(422, "no parseable deck lines")
+    all_unmatched_suffix = [{"qty": None, "name": l, "reason": "unparseable line"} for l in bad_lines]
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             matched, unmatched = deck_import.match_deck_entries(cur, entries)
-            try:
+            wanted = {c["card_id"]: c["qty"] for c in matched}
+
+            # validate BEFORE writing so strict mode can refuse cleanly
+            cur.execute(
+                "SELECT id, full_name, ink, inks FROM cards WHERE id = ANY(%s)",
+                (list(wanted),),
+            )
+            card_rows = [{**r, "qty": wanted[r["id"]]} for r in cur.fetchall()]
+            warnings = _validate(card_rows)
+            if body.strict and warnings:
+                raise HTTPException(422, detail={
+                    "error": "deck failed validation (strict mode) — nothing written",
+                    "validation": warnings,
+                    "unmatched": unmatched + all_unmatched_suffix,
+                })
+
+            cur.execute("SELECT id, notes FROM decks WHERE name=%s", (body.name,))
+            existing = cur.fetchone()
+            created = existing is None
+
+            # idempotency: identical card list (+ compatible notes) is a no-op,
+            # regardless of the overwrite flag
+            if existing:
                 cur.execute(
-                    "INSERT INTO decks (name, notes) VALUES (%s,%s) RETURNING id",
-                    (body.name, ""),
+                    "SELECT card_id, qty FROM deck_cards WHERE deck_id=%s", (existing["id"],))
+                current = {r["card_id"]: r["qty"] for r in cur.fetchall()}
+                notes_same = body.notes in ("", existing["notes"] or "")
+                if current == wanted and notes_same:
+                    deck = _deck_row(existing["id"])
+                    deck["created"] = False
+                    deck["unchanged"] = True
+                    deck["unmatched"] = unmatched + all_unmatched_suffix
+                    return deck
+
+            if existing and not body.overwrite:
+                raise HTTPException(
+                    409, f"deck {body.name!r} already exists (send overwrite=true to replace)")
+            if existing:
+                deck_id = existing["id"]
+                cur.execute(
+                    "UPDATE decks SET notes=%s, updated_at=now(), updated_source=%s WHERE id=%s",
+                    (body.notes, body.source, deck_id),
                 )
-            except Exception:
-                raise HTTPException(409, f"deck {body.name!r} already exists")
-            deck_id = cur.fetchone()["id"]
+            else:
+                cur.execute(
+                    "INSERT INTO decks (name, notes, created_source) VALUES (%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source),
+                )
+                deck_id = cur.fetchone()["id"]
         _write_cards(conn, deck_id, [DeckCard(**c) for c in matched])
         conn.commit()
     deck = _deck_row(deck_id)
-    deck["unmatched"] = unmatched + [{"qty": None, "name": l, "reason": "unparseable line"} for l in bad_lines]
+    deck["created"] = created
+    deck["unchanged"] = False
+    deck["unmatched"] = unmatched + all_unmatched_suffix
     return deck
 
 
@@ -115,8 +197,8 @@ def update_deck(deck_id: int, body: DeckIn):
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE decks SET name=%s, notes=%s, updated_at=now() WHERE id=%s",
-                (body.name, body.notes, deck_id),
+                "UPDATE decks SET name=%s, notes=%s, updated_at=now(), updated_source=%s WHERE id=%s",
+                (body.name, body.notes, body.source, deck_id),
             )
         _write_cards(conn, deck_id, body.cards)
         conn.commit()

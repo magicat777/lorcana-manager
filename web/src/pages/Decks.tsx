@@ -17,7 +17,7 @@ export default function Decks() {
   const createEmpty = async () => {
     if (!name.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [] })
+      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [], source: 'webui' })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))
@@ -27,7 +27,7 @@ export default function Decks() {
   const importDeck = async () => {
     if (!name.trim() || !text.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text })
+      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text, source: 'webui' })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))

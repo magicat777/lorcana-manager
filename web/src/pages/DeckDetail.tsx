@@ -41,7 +41,7 @@ export default function DeckDetail() {
   const save = async (cards: { card_id: string; qty: number }[]) => {
     if (!deck) return
     try {
-      await send('PUT', `/decks/${deck.id}`, { name: deck.name, notes: deck.notes ?? '', cards })
+      await send('PUT', `/decks/${deck.id}`, { name: deck.name, notes: deck.notes ?? '', cards, source: 'webui' })
       load()
     } catch (e) {
       setError(String(e))
@@ -90,6 +90,9 @@ export default function DeckDetail() {
             ? '✔ You can build this deck from your collection.'
             : `✘ Missing ${buildable.missing_total} copies across ${buildable.missing.length} cards.`}
         </p>
+      )}
+      {deck.validation && deck.validation.length > 0 && (
+        <p className="error">{deck.validation.map((w, i) => <span key={i}>⚠ {w}<br /></span>)}</p>
       )}
 
       <div className="panel">

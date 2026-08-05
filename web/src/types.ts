@@ -121,6 +121,9 @@ export interface Deck {
   notes: string | null
   updated_at: string
   card_total: number
+  created_source?: string
+  updated_source?: string | null
+  validation?: string[]
   cards?: DeckCardRow[]
   unmatched?: { qty: number | null; name: string; reason: string }[]
 }

@@ -6,7 +6,8 @@ import type { Card, Deck, SearchResult } from '../types'
 
 interface Buildable {
   buildable: boolean
-  missing: { card_id: string; full_name: string; need: number; have: number; missing: number }[]
+  in_use: boolean
+  missing: { card_id: string; full_name: string; need: number; have: number; free: number; missing: number }[]
   missing_total: number
 }
 
@@ -72,6 +73,25 @@ export default function DeckDetail() {
     nav('/decks')
   }
 
+  const toggleInUse = async (force = false) => {
+    if (!deck) return
+    setError('')
+    try {
+      await send('PUT', `/decks/${deck.id}/in_use`, { in_use: !deck.in_use, force })
+      load()
+    } catch (e) {
+      const err = e as Error & { status?: number; detail?: { missing?: { full_name: string; missing: number }[] } }
+      if (err.status === 409 && err.detail?.missing) {
+        const list = err.detail.missing.map((c) => `${c.missing}x ${c.full_name}`).join(', ')
+        if (confirm(`Not enough free copies (allocated to other built decks or unowned): ${list}.\n\nMark as built anyway?`)) {
+          toggleInUse(true)
+        }
+      } else {
+        setError(String(err.message ?? err))
+      }
+    }
+  }
+
   if (error) return <p className="error">{error}</p>
   if (!deck) return <p className="muted">Loading…</p>
 
@@ -81,14 +101,20 @@ export default function DeckDetail() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1>
           {deck.name} <span className="muted">({deck.card_total} cards)</span>
+          {deck.in_use && <span className="badge foil" style={{ marginLeft: 10, verticalAlign: 'middle' }}>◈ BUILT / IN USE</span>}
         </h1>
-        <button className="danger" onClick={remove}>Delete deck</button>
+        <span>
+          <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
+            {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
+          </button>
+          <button className="danger" onClick={remove}>Delete deck</button>
+        </span>
       </div>
       {buildable && (
         <p className={buildable.buildable ? 'ok' : 'error'}>
           {buildable.buildable
-            ? '✔ You can build this deck from your collection.'
-            : `✘ Missing ${buildable.missing_total} copies across ${buildable.missing.length} cards.`}
+            ? '✔ Buildable from free copies (not allocated to other built decks).'
+            : `✘ Short ${buildable.missing_total} free copies across ${buildable.missing.length} cards (owned but allocated elsewhere, or unowned).`}
         </p>
       )}
       {deck.validation && deck.validation.length > 0 && (
@@ -120,11 +146,11 @@ export default function DeckDetail() {
 
       <table>
         <thead>
-          <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>Owned</th><th></th></tr>
+          <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>Owned</th><th>Free</th><th></th></tr>
         </thead>
         <tbody>
           {deck.cards?.map((c) => (
-            <tr key={c.card_id} className={c.owned < c.qty ? 'bad' : ''}>
+            <tr key={c.card_id} className={c.free < c.qty ? 'bad' : ''}>
               <td>
                 <button className="secondary" onClick={() => setQty(c.card_id, c.qty - 1)}>−</button>{' '}
                 <strong>{c.qty}</strong>{' '}
@@ -138,6 +164,9 @@ export default function DeckDetail() {
               <td>{c.cost ?? '—'}</td>
               <td className="muted">{c.type?.join(' · ')}</td>
               <td>{c.owned}</td>
+              <td title={c.allocated_elsewhere ? `${c.allocated_elsewhere} allocated to other built decks` : ''}>
+                {c.free}{c.allocated_elsewhere > 0 && <span className="muted"> ({c.allocated_elsewhere} in decks)</span>}
+              </td>
               <td><button className="secondary" onClick={() => setQty(c.card_id, 0)}>✕</button></td>
             </tr>
           ))}

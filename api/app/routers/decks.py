@@ -67,7 +67,11 @@ def _deck_row(deck_id: int) -> dict:
     deck["cards"] = db.query(
         """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type,
                   s.code AS set_code, c.collector_number, c.image_small,
-                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned
+                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
+                  COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
+                            JOIN decks d2 ON d2.id = dc2.deck_id
+                            WHERE dc2.card_id = dc.card_id AND d2.in_use
+                              AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere
            FROM deck_cards dc
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
@@ -76,6 +80,8 @@ def _deck_row(deck_id: int) -> dict:
            ORDER BY c.cost NULLS LAST, c.full_name""",
         (deck_id,),
     )
+    for c in deck["cards"]:
+        c["free"] = max(0, c["owned"] - c["allocated_elsewhere"])
     deck["card_total"] = sum(c["qty"] for c in deck["cards"])
     deck["validation"] = _validate(deck["cards"])
     return deck
@@ -94,10 +100,10 @@ def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
 @router.get("/decks")
 def list_decks():
     return db.query(
-        """SELECT d.id, d.name, d.notes, d.updated_at,
+        """SELECT d.id, d.name, d.notes, d.in_use, d.updated_at,
                   COALESCE(sum(dc.qty), 0) AS card_total
            FROM decks d LEFT JOIN deck_cards dc ON dc.deck_id = d.id
-           GROUP BY d.id ORDER BY d.name"""
+           GROUP BY d.id ORDER BY d.in_use DESC, d.name"""
     )
 
 
@@ -211,20 +217,48 @@ def delete_deck(deck_id: int):
         raise HTTPException(404, "no such deck")
 
 
-@router.get("/decks/{deck_id}/buildable")
-def buildable(deck_id: int):
-    deck = _deck_row(deck_id)
+class InUseIn(BaseModel):
+    in_use: bool
+    force: bool = False   # mark built even when free copies are short
+
+
+def _buildable(deck: dict) -> dict:
+    """Validate against FREE copies: owned minus copies allocated to OTHER
+    in_use decks. 'have' stays raw owned for reference."""
     cards = [
         {
             "card_id": c["card_id"], "full_name": c["full_name"],
             "need": c["qty"], "have": c["owned"],
-            "missing": max(0, c["qty"] - c["owned"]),
+            "allocated_elsewhere": c["allocated_elsewhere"], "free": c["free"],
+            "missing": max(0, c["qty"] - c["free"]),
         }
         for c in deck["cards"]
     ]
     missing = [c for c in cards if c["missing"] > 0]
     return {
-        "deck_id": deck_id, "name": deck["name"], "buildable": not missing,
-        "cards": cards, "missing": missing,
+        "deck_id": deck["id"], "name": deck["name"], "in_use": deck["in_use"],
+        "buildable": not missing, "cards": cards, "missing": missing,
         "missing_total": sum(c["missing"] for c in missing),
     }
+
+
+@router.get("/decks/{deck_id}/buildable")
+def buildable(deck_id: int):
+    return _buildable(_deck_row(deck_id))
+
+
+@router.put("/decks/{deck_id}/in_use")
+def set_in_use(deck_id: int, body: InUseIn):
+    deck = _deck_row(deck_id)
+    if body.in_use and not deck["in_use"] and not body.force:
+        b = _buildable(deck)
+        if b["missing"]:
+            raise HTTPException(409, detail={
+                "error": "not enough free copies to build this deck",
+                "missing": b["missing"],
+                "hint": "cards are allocated to other in-use decks or not owned; "
+                        "send force=true to mark it built anyway",
+            })
+    db.execute("UPDATE decks SET in_use=%s, updated_at=now() WHERE id=%s",
+               (body.in_use, deck_id))
+    return _deck_row(deck_id)

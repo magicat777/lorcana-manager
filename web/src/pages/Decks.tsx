@@ -41,7 +41,10 @@ export default function Decks() {
       <div className="deckgrid">
         {decks.map((d) => (
           <Link key={d.id} to={`/decks/${d.id}`} className="panel" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <h3 style={{ margin: 0 }}>{d.name}</h3>
+            <h3 style={{ margin: 0 }}>
+              {d.name}
+              {d.in_use && <span className="badge foil" style={{ marginLeft: 8 }}>◈ built</span>}
+            </h3>
             <p className="muted" style={{ margin: '0.3rem 0 0' }}>
               {d.card_total} cards{d.notes ? ` · ${d.notes}` : ''}
             </p>

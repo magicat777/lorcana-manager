@@ -43,6 +43,9 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
             <span className="qty">
               {c.qty_normal > 0 && <span className="badge">{c.qty_normal}</span>}
               {c.qty_foil > 0 && <span className="badge foil">✦{c.qty_foil}</span>}
+              {c.qty_in_use > 0 && (
+                <span className="badge" title={`${c.qty_in_use} allocated to built decks`}>◈{c.qty_in_use}</span>
+              )}
             </span>
             <div className="label">
               <span>

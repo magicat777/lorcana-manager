@@ -28,6 +28,9 @@ export interface Card {
   price_usd_foil: string | number | null
   qty_normal: number
   qty_foil: number
+  qty_in_use: number
+  qty_free?: number
+  decks?: { id: number; name: string; in_use: boolean; qty: number }[]
   illustrators?: string[]
   released_at?: string
 }
@@ -113,12 +116,15 @@ export interface DeckCardRow {
   collector_number: string
   image_small: string | null
   owned: number
+  allocated_elsewhere: number
+  free: number
 }
 
 export interface Deck {
   id: number
   name: string
   notes: string | null
+  in_use: boolean
   updated_at: string
   card_total: number
   created_source?: string

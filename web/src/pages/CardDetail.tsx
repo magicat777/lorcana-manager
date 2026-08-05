@@ -64,6 +64,20 @@ export default function CardDetail() {
           </div>
           {card.body_text && <p style={{ whiteSpace: 'pre-wrap' }}>{card.body_text}</p>}
           {card.flavor_text && <p className="muted" style={{ fontStyle: 'italic' }}>{card.flavor_text}</p>}
+          {card.decks && card.decks.length > 0 && (
+            <div className="panel">
+              <h3 style={{ marginTop: 0 }}>In decks</h3>
+              {card.decks.map((d) => (
+                <p key={d.id} style={{ margin: '0.25rem 0' }}>
+                  {d.qty}x in <Link to={`/decks/${d.id}`}>{d.name}</Link>
+                  {d.in_use && <span className="badge foil" style={{ marginLeft: 6 }}>◈ built</span>}
+                </p>
+              ))}
+              <p className="muted" style={{ margin: '0.4rem 0 0' }}>
+                {card.qty_in_use} allocated to built decks · {card.qty_free} free in collection
+              </p>
+            </div>
+          )}
           <div className="panel">
             <h3 style={{ marginTop: 0 }}>In collection</h3>
             <div className="qtyedit">

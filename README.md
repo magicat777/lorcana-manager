@@ -50,3 +50,20 @@ The one-time DB bootstrap runs `db/migrations/000_role_db.sql` through the odin-
 postgres pod (`kubectl exec`); the app role password lives only in the `lorcana-db`
 secret. Schema migrations (`001+`) are all `IF NOT EXISTS`-idempotent and re-applied
 by a Job on every `apply.sh`.
+
+## Daily brief push (ntfy)
+
+The `lorcana-daily-brief` CronJob (8am PT) pushes to ntfy only when the
+`lorcana-ntfy` secret exists (key `LORCANA_NTFY_URL`, a private unguessable
+topic URL — topic name = password on public ntfy.sh). Without it the brief is
+log-only (Loki). The topic URL is also kept at
+`~/Projects/secrets/lorcana.ntfy.url.s` (never committed). Subscribe to the
+topic in the ntfy phone app. To rotate:
+
+```bash
+URL="https://ntfy.sh/odin-lorcana-$(openssl rand -hex 8)"
+echo "$URL" > ~/Projects/secrets/lorcana.ntfy.url.s
+kubectl -n lorcana delete secret lorcana-ntfy
+kubectl -n lorcana create secret generic lorcana-ntfy --from-literal=LORCANA_NTFY_URL="$URL"
+# then re-subscribe to the new topic on the phone
+```

@@ -104,6 +104,9 @@ export default function DeckDetail() {
           {deck.in_use && <span className="badge foil" style={{ marginLeft: 10, verticalAlign: 'middle' }}>◈ BUILT / IN USE</span>}
         </h1>
         <span>
+          <Link to={`/decks/${deck.id}/export`} style={{ marginRight: 8 }}>
+            <button className="secondary">Export / print</button>
+          </Link>
           <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
             {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
           </button>

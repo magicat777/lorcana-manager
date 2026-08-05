@@ -4,6 +4,7 @@ import CardDetail from './pages/CardDetail'
 import Upload from './pages/Upload'
 import Decks from './pages/Decks'
 import DeckDetail from './pages/DeckDetail'
+import DeckExport from './pages/DeckExport'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Brief from './pages/Brief'
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/upload" element={<Upload />} />
           <Route path="/decks" element={<Decks />} />
           <Route path="/decks/:id" element={<DeckDetail />} />
+          <Route path="/decks/:id/export" element={<DeckExport />} />
           <Route path="/matches" element={<Events />} />
           <Route path="/matches/:id" element={<EventDetail />} />
           <Route path="/brief" element={<Brief />} />

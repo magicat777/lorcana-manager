@@ -66,6 +66,7 @@ def _deck_row(deck_id: int) -> dict:
         raise HTTPException(404, "no such deck")
     deck["cards"] = db.query(
         """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type,
+                  c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
                   s.code AS set_code, c.collector_number, c.image_small,
                   COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
@@ -245,6 +246,74 @@ def _buildable(deck: dict) -> dict:
 @router.get("/decks/{deck_id}/buildable")
 def buildable(deck_id: int):
     return _buildable(_deck_row(deck_id))
+
+
+@router.get("/decks/{deck_id}/export")
+def export_deck(deck_id: int):
+    """Tournament export: Dreamborn-compatible text list + composition analysis
+    (type counts, cost curve, inkable split, per-ink counts, Core legality)."""
+    deck = _deck_row(deck_id)
+    cards = sorted(deck["cards"], key=lambda c: (c["cost"] or 0, c["full_name"]))
+
+    text = "\n".join(f"{c['qty']} {c['full_name']}" for c in cards)
+
+    def primary_type(c) -> str:
+        t = c.get("type") or []
+        if "Song" in t:
+            return "Action — Song"
+        for k in ("Character", "Action", "Item", "Location"):
+            if k in t:
+                return k
+        return "Other"
+
+    type_counts: dict[str, int] = {}
+    curve: dict[str, int] = {}
+    ink_counts: dict[str, int] = {}
+    inkable = 0
+    lore_total = 0
+    cost_qty_sum = 0
+    for c in cards:
+        type_counts[primary_type(c)] = type_counts.get(primary_type(c), 0) + c["qty"]
+        bucket = "9+" if (c["cost"] or 0) >= 9 else str(c["cost"] or 0)
+        curve[bucket] = curve.get(bucket, 0) + c["qty"]
+        for ink in (c.get("inks") or ([c["ink"]] if c.get("ink") else [])):
+            ink_counts[ink] = ink_counts.get(ink, 0) + c["qty"]
+        if c.get("inkwell"):
+            inkable += c["qty"]
+        if c.get("lore"):
+            lore_total += c["lore"] * c["qty"]
+        cost_qty_sum += (c["cost"] or 0) * c["qty"]
+
+    total = deck["card_total"]
+    not_core_legal = [
+        {"full_name": c["full_name"], "qty": c["qty"], "set_code": c["set_code"],
+         "status": (c.get("legalities") or {}).get("core", "unknown")}
+        for c in cards
+        if (c.get("legalities") or {}).get("core") != "legal"
+    ]
+
+    return {
+        "deck_id": deck["id"], "name": deck["name"], "notes": deck["notes"],
+        "in_use": deck["in_use"], "card_total": total,
+        "text": text,
+        "cards": [
+            {k: c[k] for k in ("qty", "full_name", "set_code", "collector_number",
+                               "ink", "inks", "cost", "inkwell", "rarity", "type")}
+            for c in cards
+        ],
+        "composition": {
+            "type_counts": type_counts,
+            "cost_curve": {k: curve[k] for k in sorted(curve, key=lambda x: 99 if x == "9+" else int(x))},
+            "ink_counts": ink_counts,
+            "inkable": inkable,
+            "uninkable": total - inkable,
+            "avg_cost": round(cost_qty_sum / total, 2) if total else 0,
+            "total_lore": lore_total,
+        },
+        "validation": deck["validation"],
+        "not_core_legal": not_core_legal,
+        "core_legal": not not_core_legal and not deck["validation"],
+    }
 
 
 @router.put("/decks/{deck_id}/in_use")

@@ -22,9 +22,10 @@ def main() -> int:
                     prices = c.get("prices") or {}
                     cur.execute(
                         """UPDATE cards SET price_usd=%s, price_usd_foil=%s,
-                             prices_updated_at=now(), raw=%s, updated_at=now()
+                             legalities=%s, prices_updated_at=now(), raw=%s, updated_at=now()
                            WHERE id=%s""",
-                        (prices.get("usd"), prices.get("usd_foil"), Jsonb(c), c["id"]),
+                        (prices.get("usd"), prices.get("usd_foil"),
+                         Jsonb(c.get("legalities")), Jsonb(c), c["id"]),
                     )
                     updated += cur.rowcount
                     if cur.rowcount:

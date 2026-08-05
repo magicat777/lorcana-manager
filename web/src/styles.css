@@ -142,3 +142,18 @@ tr.bad td { color: var(--danger); }
 .ok { color: var(--ok); }
 .deckgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.9rem; }
 .inkdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+
+.sheet-fields { display: flex; gap: 2rem; flex-wrap: wrap; }
+
+@media print {
+  .topbar, .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  main { padding: 0; max-width: none; }
+  .printsheet, .printsheet .muted, .printsheet th, .printsheet td { color: #000; }
+  .printsheet .panel { background: #fff; border-color: #999; }
+  .printsheet .ok { color: #000; }
+  .printsheet .error { color: #000; font-weight: 700; }
+  .printsheet th, .printsheet td { border-bottom: 1px solid #bbb; padding: 0.2rem 0.5rem; }
+  .printsheet .progress { background: #eee; border: 1px solid #999; }
+  .printsheet .progress > div { background: #444; }
+}

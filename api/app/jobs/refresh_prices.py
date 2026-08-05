@@ -27,6 +27,11 @@ def main() -> int:
                         (prices.get("usd"), prices.get("usd_foil"), Jsonb(c), c["id"]),
                     )
                     updated += cur.rowcount
+                    if cur.rowcount:
+                        cur.execute(
+                            "INSERT INTO price_history (card_id, usd, usd_foil) VALUES (%s,%s,%s)",
+                            (c["id"], prices.get("usd"), prices.get("usd_foil")),
+                        )
             conn.commit()
             print(f"  set {s['code']:>4}: prices updated", flush=True)
     print(f"done: {updated} cards price-refreshed", flush=True)

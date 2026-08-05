@@ -6,6 +6,7 @@ import Decks from './pages/Decks'
 import DeckDetail from './pages/DeckDetail'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
+import Brief from './pages/Brief'
 import Stats from './pages/Stats'
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <NavLink to="/stats">Stats</NavLink>
           <NavLink to="/decks">Decks</NavLink>
           <NavLink to="/matches">Matches</NavLink>
+          <NavLink to="/brief">Brief</NavLink>
           <NavLink to="/upload">Upload</NavLink>
         </nav>
       </header>
@@ -30,6 +32,7 @@ export default function App() {
           <Route path="/decks/:id" element={<DeckDetail />} />
           <Route path="/matches" element={<Events />} />
           <Route path="/matches/:id" element={<EventDetail />} />
+          <Route path="/brief" element={<Brief />} />
           <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>

@@ -67,7 +67,7 @@ def _deck_row(deck_id: int) -> dict:
     deck["cards"] = db.query(
         """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type,
                   c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
-                  s.code AS set_code, c.collector_number, c.image_small,
+                  s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
                   COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                             JOIN decks d2 ON d2.id = dc2.deck_id
@@ -285,11 +285,14 @@ def export_deck(deck_id: int):
         cost_qty_sum += (c["cost"] or 0) * c["qty"]
 
     total = deck["card_total"]
+    # Core legality = sets.core_legal (maintained via migration 009); Lorcast's
+    # legalities field proved stale on rotation and new-set dates.
     not_core_legal = [
         {"full_name": c["full_name"], "qty": c["qty"], "set_code": c["set_code"],
-         "status": (c.get("legalities") or {}).get("core", "unknown")}
+         "status": f"set {c['set_code']} rotated out / not Core-legal",
+         "lorcast_says": (c.get("legalities") or {}).get("core", "unknown")}
         for c in cards
-        if (c.get("legalities") or {}).get("core") != "legal"
+        if not c.get("core_legal")
     ]
 
     return {

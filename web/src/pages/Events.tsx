@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
-import type { Deck, EventRow } from '../types'
+import type { Deck, EventRow, Venue } from '../types'
 
 export default function Events() {
   const [events, setEvents] = useState<EventRow[]>([])
   const [decks, setDecks] = useState<Deck[]>([])
+  const [venues, setVenues] = useState<Venue[]>([])
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
+    venue_slug: '',
     store: '',
     deck_id: '',
     deck_version: '',
@@ -21,13 +23,15 @@ export default function Events() {
   useEffect(() => {
     get<EventRow[]>('/events').then(setEvents).catch((e) => setError(String(e)))
     get<Deck[]>('/decks').then(setDecks).catch(() => {})
+    get<Venue[]>('/venues').then(setVenues).catch(() => {})
   }, [])
 
   const create = async () => {
     try {
       const ev = await send<EventRow>('POST', '/events', {
         date: form.date,
-        store: form.store.trim(),
+        venue_slug: form.venue_slug !== 'other' ? form.venue_slug || null : null,
+        store: form.venue_slug === 'other' ? form.store.trim() : '',
         deck_id: form.deck_id ? Number(form.deck_id) : null,
         deck_version: form.deck_version,
         rounds: form.rounds ? Number(form.rounds) : null,
@@ -73,7 +77,14 @@ export default function Events() {
         <h3 style={{ marginTop: 0 }}>New event</h3>
         <div className="filterbar">
           <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-          <input placeholder="Store" value={form.store} onChange={(e) => setForm({ ...form, store: e.target.value })} />
+          <select value={form.venue_slug} onChange={(e) => setForm({ ...form, venue_slug: e.target.value })}>
+            <option value="">Venue…</option>
+            {venues.map((v) => <option key={v.slug} value={v.slug}>{v.display_name}</option>)}
+            <option value="other">Other…</option>
+          </select>
+          {form.venue_slug === 'other' && (
+            <input placeholder="Store name" value={form.store} onChange={(e) => setForm({ ...form, store: e.target.value })} />
+          )}
           <select value={form.deck_id} onChange={(e) => setForm({ ...form, deck_id: e.target.value })}>
             <option value="">My deck…</option>
             {decks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -82,7 +93,10 @@ export default function Events() {
           <input placeholder="Rounds" size={4} value={form.rounds} onChange={(e) => setForm({ ...form, rounds: e.target.value })} />
           <input placeholder="Players" size={4} value={form.player_count} onChange={(e) => setForm({ ...form, player_count: e.target.value })} />
           <input placeholder="Entry $" size={5} value={form.entry_fee} onChange={(e) => setForm({ ...form, entry_fee: e.target.value })} />
-          <button onClick={create} disabled={!form.store.trim()}>Start event</button>
+          <button onClick={create}
+            disabled={!form.venue_slug || (form.venue_slug === 'other' && !form.store.trim())}>
+            Start event
+          </button>
         </div>
       </div>
     </div>

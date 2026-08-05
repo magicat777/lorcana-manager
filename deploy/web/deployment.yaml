@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: localhost:30500/lorcana/web:nginx-20260805c
+          image: localhost:30500/lorcana/web:nginx-20260805d
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

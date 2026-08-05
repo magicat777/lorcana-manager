@@ -128,6 +128,18 @@ export interface Deck {
   unmatched?: { qty: number | null; name: string; reason: string }[]
 }
 
+export interface Venue {
+  id: number
+  slug: string
+  name: string
+  city: string
+  state: string
+  display_name: string
+  active: boolean
+  event_night: string | null
+  event_time: string | null
+}
+
 export interface ObservationRow {
   id: number
   kind: string

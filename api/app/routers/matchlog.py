@@ -41,9 +41,28 @@ class MatchIn(BaseModel):
     overwrite: bool = False            # replace an existing round entry
 
 
+class VenueIn(BaseModel):
+    slug: str
+    name: str
+    city: str
+    state: str = "CA"
+    display_name: str = ""
+
+
+class VenueUpdate(BaseModel):
+    address: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    active: bool | None = None
+    event_night: str | None = None
+    event_time: str | None = None
+    notes: str | None = None
+
+
 class EventIn(BaseModel):
     date: str
-    store: str
+    store: str = ""                    # free text ("Other" venues); or use venue_slug
+    venue_slug: str | None = None      # preferred: stable venue identifier
     format: str = "Core Constructed"
     player_count: int | None = None
     rounds: int | None = None
@@ -116,16 +135,64 @@ def list_events(limit: int = 50):
     return events
 
 
+@router.get("/venues")
+def list_venues(all: bool = False):
+    """Active venues, nearest-first once lat/lon are populated (home ~ ***REDACTED***)."""
+    where = "" if all else "WHERE active"
+    return db.query(
+        f"""SELECT * FROM venues {where}
+            ORDER BY (lat IS NULL),
+                     ((lat - ***REDACTED***)^2 + (lon - (***REDACTED***))^2),
+                     display_name""")
+
+
+@router.post("/venues", status_code=201)
+def create_venue(body: VenueIn):
+    display = body.display_name or f"{body.name} — {body.city}"
+    try:
+        row = db.query(
+            """INSERT INTO venues (slug, name, city, state, display_name)
+               VALUES (%s,%s,%s,%s,%s) RETURNING *""",
+            (body.slug, body.name, body.city, body.state, display))
+    except Exception:
+        raise HTTPException(409, f"venue slug {body.slug!r} already exists")
+    return row[0]
+
+
+@router.put("/venues/{slug}")
+def update_venue(slug: str, body: VenueUpdate):
+    sets, params = [], []
+    for field in ("address", "lat", "lon", "active", "event_night", "event_time", "notes"):
+        v = getattr(body, field)
+        if v is not None:
+            sets.append(f"{field}=%s")
+            params.append(v)
+    if not sets:
+        raise HTTPException(422, "nothing to update")
+    if db.execute(f"UPDATE venues SET {', '.join(sets)} WHERE slug=%s", params + [slug]) == 0:
+        raise HTTPException(404, f"no venue {slug!r}")
+    return db.query_one("SELECT * FROM venues WHERE slug=%s", (slug,))
+
+
 @router.post("/events", status_code=201)
 def create_event(body: EventIn):
     if body.deck_id is not None and not db.query_one(
             "SELECT 1 FROM decks WHERE id=%s", (body.deck_id,)):
         raise HTTPException(404, f"no deck #{body.deck_id}")
+    venue_id, store = None, body.store.strip()
+    if body.venue_slug:
+        venue = db.query_one("SELECT id, display_name FROM venues WHERE slug=%s",
+                             (body.venue_slug,))
+        if not venue:
+            raise HTTPException(404, f"no venue {body.venue_slug!r}")
+        venue_id, store = venue["id"], venue["display_name"]
+    if not store:
+        raise HTTPException(422, "provide venue_slug or a free-text store name")
     row = db.query(
-        """INSERT INTO events (date, store, format, player_count, rounds, deck_id,
-                               deck_version, entry_fee, notes)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-        (body.date, body.store, body.format, body.player_count, body.rounds,
+        """INSERT INTO events (date, store, venue_id, format, player_count, rounds,
+                               deck_id, deck_version, entry_fee, notes)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (body.date, store, venue_id, body.format, body.player_count, body.rounds,
          body.deck_id, body.deck_version, body.entry_fee, body.notes))
     return _event_row(row[0]["id"])
 

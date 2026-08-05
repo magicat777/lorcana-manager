@@ -128,6 +128,62 @@ export interface Deck {
   unmatched?: { qty: number | null; name: string; reason: string }[]
 }
 
+export interface ObservationRow {
+  id: number
+  kind: string
+  value: string
+  card_set_code: string | null
+  card_number: string | null
+}
+
+export interface GameRow {
+  id: number
+  game_no: number
+  on_play: boolean | null
+  won: boolean | null
+  loss_mode: string | null
+  cards_altered: number | null
+}
+
+export interface MatchRow {
+  id: number
+  round: number
+  opponent_handle: string | null
+  result: string
+  opp_ink_1: string | null
+  opp_ink_2: string | null
+  opp_shape: string | null
+  one_liner: string | null
+  games: GameRow[]
+  observations: ObservationRow[]
+}
+
+export interface EventRow {
+  id: number
+  date: string
+  store: string
+  format: string
+  rounds: number | null
+  player_count: number | null
+  deck_name: string | null
+  deck_version: string | null
+  final_record: string | null
+  packs_won: number | null
+  promo: boolean | null
+  record: string
+  match_count: number
+}
+
+export interface EventDetailData extends EventRow {
+  deck_id: number | null
+  entry_fee: string | number | null
+  biggest_problem: string | null
+  one_change: string | null
+  notes: string | null
+  matches: MatchRow[]
+  observations: ObservationRow[]
+}
+
 export interface SetStats {
   code: string
   name: string

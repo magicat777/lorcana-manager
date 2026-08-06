@@ -329,7 +329,14 @@ Runs `python -m app.jobs.refresh_prices`. Updates `price_usd`,
 until the seed job has inserted it.
 
 The brief's *price movers* section needs **at least two** history snapshots per
-card, so it stays empty until the second weekly run after setup.
+card, so it stays empty until the second weekly run after setup. (The first
+snapshot was seeded manually 2026-08-06.)
+
+Price history also powers **Stats-page trends**: `GET /stats/value-history`
+(today's collection valued at each weekly snapshot) and
+`GET /stats/movers?days=30|90` (top owned-card gainers/losers; falls back to
+the oldest snapshot while history is shorter than the window), plus per-card
+sparklines on card detail (`price_history` in the card payload).
 
 ### 6.2 CronJob: `lorcana-news-fetch` — daily 14:30 UTC
 
@@ -512,8 +519,12 @@ this is the manual way to adjust quantities without a re-import.
 ### 9.3 Stats (`/stats`)
 
 Collection totals (unique owned / catalog size, normal + foil copies, estimated
-value) plus a panel per set with completion % bar, playset progress (4+
-copies), copy count, and set value.
+value), a **collection value over time** chart (today's collection at each
+weekly price snapshot, hover any point for the value), **price movers** tables
+(owned-card gainers/losers with a 30/90-day toggle), plus a panel per set with
+completion % bar, playset progress (4+ copies), copy count, and set value.
+Card detail pages get weekly price sparklines (normal + foil) once a card has
+two snapshots.
 
 ### 9.4 Upload (`/upload`)
 
@@ -650,6 +661,8 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force`. 413 >10 MiB, 409 duplicate merge, 422 bad format. |
 | `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows. |
 | `GET /stats`, `GET /stats/sets` | Collection totals / per-set stats. |
+| `GET /stats/value-history` | Collection value at each weekly price snapshot. |
+| `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
 | `GET /brief` | Structured brief + rendered `text`. |
 | `GET/POST /decks`, `GET/PUT/DELETE /decks/{id}` | Deck CRUD (name unique; PUT replaces the whole card list). |

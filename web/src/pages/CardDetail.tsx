@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { get, money, send } from '../api'
 import { InkDots } from '../components/CardGrid'
+import Sparkline from '../components/Sparkline'
 import type { Card } from '../types'
 
 export default function CardDetail() {
@@ -65,6 +66,30 @@ export default function CardDetail() {
             <div className="stat"><div className="k">Price</div><div className="v">{money(card.price_usd)}</div></div>
             <div className="stat"><div className="k">Foil</div><div className="v">{money(card.price_usd_foil)}</div></div>
           </div>
+          {(() => {
+            const hist = (card.price_history ?? []).filter((h) => h.usd != null)
+            const foil = (card.price_history ?? []).filter((h) => h.usd_foil != null)
+            if (hist.length < 2 && foil.length < 2) return null
+            const pts = (rows: typeof hist, key: 'usd' | 'usd_foil') =>
+              rows.map((h) => ({ t: h.captured_at.slice(0, 10), v: Number(h[key]) }))
+            return (
+              <div className="panel">
+                <h3 style={{ marginTop: 0 }}>Price history <span className="muted">(weekly)</span></h3>
+                {hist.length >= 2 && (
+                  <p style={{ margin: '0.3rem 0' }}>
+                    <span className="muted" style={{ display: 'inline-block', width: 60 }}>Price</span>
+                    <Sparkline points={pts(hist, 'usd')} showRange />
+                  </p>
+                )}
+                {foil.length >= 2 && (
+                  <p style={{ margin: '0.3rem 0' }}>
+                    <span className="muted" style={{ display: 'inline-block', width: 60 }}>Foil ✦</span>
+                    <Sparkline points={pts(foil, 'usd_foil')} showRange />
+                  </p>
+                )}
+              </div>
+            )
+          })()}
           {card.body_text && <p style={{ whiteSpace: 'pre-wrap' }}>{card.body_text}</p>}
           {card.flavor_text && <p className="muted" style={{ fontStyle: 'italic' }}>{card.flavor_text}</p>}
           {card.decks && card.decks.length > 0 && (

@@ -34,6 +34,7 @@ export interface Card {
   decks?: { id: number; name: string; in_use: boolean; qty: number }[]
   illustrators?: string[]
   released_at?: string
+  price_history?: { captured_at: string; usd: string | number | null; usd_foil: string | number | null }[]
 }
 
 export interface SetInfo {

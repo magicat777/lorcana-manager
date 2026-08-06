@@ -38,6 +38,65 @@ def per_set():
     )
 
 
+@router.get("/stats/value-history")
+def value_history():
+    """Collection value at each weekly price snapshot — today's quantities at
+    historical prices (a holdings-value series, not a cash-flow history)."""
+    return db.query(
+        """WITH daily AS (
+             SELECT DISTINCT ON (ph.card_id, date_trunc('day', ph.captured_at))
+                    date_trunc('day', ph.captured_at)::date AS day,
+                    ph.card_id, ph.usd, ph.usd_foil
+             FROM price_history ph
+             ORDER BY ph.card_id, date_trunc('day', ph.captured_at), ph.captured_at DESC)
+           SELECT d.day,
+                  sum(col.qty_normal * COALESCE(d.usd, 0)
+                      + col.qty_foil * COALESCE(d.usd_foil, 0))::numeric(12,2) AS value,
+                  count(*) AS cards_priced
+           FROM daily d
+           JOIN collection col ON col.card_id = d.card_id
+           WHERE col.qty_normal + col.qty_foil > 0
+           GROUP BY d.day ORDER BY d.day""")
+
+
+@router.get("/stats/movers")
+def movers(days: int = 30, limit: int = 10):
+    """Top owned-card price gainers/losers: latest snapshot vs the latest one
+    at least `days` old (or the oldest available while history is short)."""
+    rows = db.query(
+        """WITH cur AS (
+             SELECT DISTINCT ON (card_id) card_id, usd
+             FROM price_history ORDER BY card_id, captured_at DESC),
+           prev AS (
+             SELECT DISTINCT ON (card_id) card_id, usd
+             FROM price_history
+             WHERE captured_at <= now() - make_interval(days => %s)
+             ORDER BY card_id, captured_at DESC),
+           oldest AS (
+             SELECT DISTINCT ON (card_id) card_id, usd
+             FROM price_history ORDER BY card_id, captured_at ASC)
+           SELECT c.full_name, s.code AS set_code, c.collector_number,
+                  cur.usd AS price_now,
+                  COALESCE(prev.usd, oldest.usd) AS price_then,
+                  (cur.usd - COALESCE(prev.usd, oldest.usd)) AS delta
+           FROM cur
+           JOIN oldest ON oldest.card_id = cur.card_id
+           LEFT JOIN prev ON prev.card_id = cur.card_id
+           JOIN collection col ON col.card_id = cur.card_id
+             AND col.qty_normal + col.qty_foil > 0
+           JOIN cards c ON c.id = cur.card_id
+           JOIN sets s ON s.id = c.set_id
+           WHERE cur.usd IS NOT NULL AND COALESCE(prev.usd, oldest.usd) IS NOT NULL
+             AND cur.usd <> COALESCE(prev.usd, oldest.usd)""",
+        (days,))
+    rows.sort(key=lambda r: float(r["delta"]))
+    return {
+        "days": days,
+        "losers": [r for r in rows if float(r["delta"]) < 0][:limit],
+        "gainers": [r for r in reversed(rows) if float(r["delta"]) > 0][:limit],
+    }
+
+
 @router.get("/missing")
 def missing(set: str, limit: int = 250):
     return db.query(

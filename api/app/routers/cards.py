@@ -97,4 +97,9 @@ def card_detail(set_code: str, number: str):
         (row["id"],),
     )
     row["qty_free"] = max(0, row["qty_normal"] + row["qty_foil"] - row["qty_in_use"])
+    row["price_history"] = db.query(
+        """SELECT captured_at, usd, usd_foil FROM price_history
+           WHERE card_id = %s ORDER BY captured_at""",
+        (row["id"],),
+    )
     return row

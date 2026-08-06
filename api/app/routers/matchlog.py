@@ -3,7 +3,7 @@ Fill between rounds, review before pairings (Lorcana tournament rule 5.2)."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import db
+from .. import config, db
 
 router = APIRouter()
 
@@ -137,13 +137,17 @@ def list_events(limit: int = 50):
 
 @router.get("/venues")
 def list_venues(all: bool = False):
-    """Active venues, nearest-first once lat/lon are populated (home ~ ***REDACTED***)."""
+    """Active venues; nearest-first when home coords (LORCANA_HOME_LAT/LON,
+    env-only — see config.py) and venue lat/lon are populated, else A-Z."""
     where = "" if all else "WHERE active"
+    if config.HOME_LAT is None or config.HOME_LON is None:
+        return db.query(f"SELECT * FROM venues {where} ORDER BY display_name")
     return db.query(
         f"""SELECT * FROM venues {where}
             ORDER BY (lat IS NULL),
-                     ((lat - ***REDACTED***)^2 + (lon - (***REDACTED***))^2),
-                     display_name""")
+                     ((lat - %s)^2 + (lon - %s)^2),
+                     display_name""",
+        (config.HOME_LAT, config.HOME_LON))
 
 
 @router.post("/venues", status_code=201)

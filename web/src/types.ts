@@ -139,6 +139,7 @@ export interface Deck {
   name: string
   notes: string | null
   in_use: boolean
+  wanted?: boolean
   format: 'constructed' | 'sealed'
   updated_at: string
   card_total: number

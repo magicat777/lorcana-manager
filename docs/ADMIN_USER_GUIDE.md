@@ -414,7 +414,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
 | `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary. |
-| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); provenance `created_source`/`updated_source` ∈ api/webui/mcp (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
+| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); `wanted` want-list flag (mig 013); provenance `created_source`/`updated_source` ∈ api/webui/mcp (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
 | `deck_pool` | Sealed decks only (mig 011): the cards opened from packs, grows weekly in a league. Sealed decks validate/build against their pool, never the collection, and are excluded from `in_use` allocation. |
 | `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','DRAW','BYE'), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
@@ -472,6 +472,12 @@ Logs land in Loki with `ai.odin.loki.app_category: lorcana`.
 
 Base URL `http://192.168.1.154:30710`. Nav bar: **Cards · Stats · Decks ·
 Matches · Brief · Upload**.
+
+**Install on your phone**: open the site in Safari/Chrome and *Add to Home
+Screen* — it installs as a standalone app (gold ◈ icon, dark theme). The UI is
+touch-optimized: the match-log toggles get bigger tap targets on touch screens
+and tables scroll horizontally. LAN-only until remote access (roadmap #8) is
+set up.
 
 ### 9.1 Cards (`/`)
 
@@ -532,8 +538,14 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   copies), owned and **free** columns (free = not allocated to other built
   decks; short rows highlighted); remove with ✕. Every edit saves immediately.
 - **Buildable check:** green ✔ when the deck is coverable from free copies,
-  red ✘ with the exact shortfall otherwise. Validation warnings (60 cards, ≤4
-  per name, ≤2 inks, dual-ink fit) show as ⚠ lines — warnings, not blocks.
+  red ✘ with the exact shortfall **and cost to complete** (missing copies ×
+  current prices). Validation warnings (60 cards, ≤4 per name, ≤2 inks,
+  dual-ink fit) show as ⚠ lines — warnings, not blocks.
+- **Want list:** unbuilt constructed decks get a ☆ **Add to want list** button.
+  The **Want List** page (linked from Decks) aggregates every missing copy
+  across flagged decks — on top of what built decks already allocate, so it's
+  the true "make everything buildable simultaneously" shopping list — priced
+  per card, biggest ticket first, with a copy-as-text button for the shop.
 - **Mark built / in use:** allocates the deck's copies. If other built decks
   already claim some, you get a confirm dialog listing the shortfall and can
   force it. Un-marking is never blocked.
@@ -566,6 +578,11 @@ This data feeds the **cut list** (cards never MVP, sorted by dead mentions —
 MCP `lorcana_cut_list`), the **local meta** table (ink-pair frequencies +
 losses), and the daily brief's deck watch.
 
+**Match Stats** ("Win-rate analytics →" from the Match Log): overall record
+and win rate, on-play vs on-draw, game 1 vs games 2–3, how games are lost
+(loss-mode bars), vs opponent archetype, per-deck breakdown, and vs ink pairs
+— filterable to a single deck. Backed by `GET /api/matchlog/stats`.
+
 ### 9.7 Brief (`/brief`)
 
 The daily digest on demand: tonight's league night (from venue
@@ -594,6 +611,7 @@ be dictated conversationally between rounds.
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
 | `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
+| `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list. |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Permanent delete (confirm with the user first). |
@@ -636,3 +654,6 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET/POST /venues`, `PUT /venues/{slug}` | Venue registry (nearest-first; retire with `active=false`). |
 | `GET /matchlog/ink-pairs` | Meta stats (`store`, `last_events`). |
 | `GET /matchlog/cut-list?deck_id=` | Never-MVP / dead-mention analysis. |
+| `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck). |
+| `PUT /decks/{id}/wanted` | Flag/unflag a deck for the want list. |
+| `GET /wantlist` | Aggregated, priced shopping list across wanted decks (+ `text` export). |

@@ -12,6 +12,8 @@ interface Buildable {
   pool_total?: number
   missing: { card_id: string; full_name: string; need: number; have: number; free: number; missing: number }[]
   missing_total: number
+  missing_cost?: number
+  missing_unpriced?: number
 }
 
 export default function DeckDetail() {
@@ -138,6 +140,12 @@ export default function DeckDetail() {
           <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
             {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
           </button>
+          {deck.format !== 'sealed' && !deck.in_use && (
+            <button className="secondary" style={{ marginRight: 8 }}
+              onClick={async () => { await send('PUT', `/decks/${deck.id}/wanted`, { wanted: !deck.wanted }); load() }}>
+              {deck.wanted ? '★ On want list' : '☆ Add to want list'}
+            </button>
+          )}
           <button className="danger" onClick={remove}>Delete deck</button>
         </span>
       </div>
@@ -154,7 +162,10 @@ export default function DeckDetail() {
         <p className={buildable.buildable ? 'ok' : 'error'}>
           {buildable.buildable
             ? '✔ Buildable from free copies (not allocated to other built decks).'
-            : `✘ Short ${buildable.missing_total} free copies across ${buildable.missing.length} cards (owned but allocated elsewhere, or unowned).`}
+            : `✘ Short ${buildable.missing_total} free copies across ${buildable.missing.length} cards`
+              + ` — ~$${(buildable.missing_cost ?? 0).toFixed(2)} to complete`
+              + (buildable.missing_unpriced ? ` (+${buildable.missing_unpriced} unpriced)` : '')
+              + '.'}
         </p>
       )}
       {deck.validation && deck.validation.length > 0 && (

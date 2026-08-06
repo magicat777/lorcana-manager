@@ -78,7 +78,7 @@ def _deck_row(deck_id: int) -> dict:
     if not deck:
         raise HTTPException(404, "no such deck")
     deck["cards"] = db.query(
-        """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type,
+        """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type, c.price_usd,
                   c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
                   s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
                   COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
@@ -290,15 +290,21 @@ def _buildable(deck: dict) -> dict:
             "need": c["qty"], "have": c["owned"],
             "allocated_elsewhere": c["allocated_elsewhere"], "free": c["free"],
             "missing": max(0, c["qty"] - c["free"]),
+            "price_usd": c.get("price_usd"),
         }
         for c in deck["cards"]
     ]
     missing = [c for c in cards if c["missing"] > 0]
+    missing_cost = round(sum(
+        float(c["price_usd"]) * c["missing"] for c in missing
+        if c["price_usd"] is not None), 2)
     return {
         "deck_id": deck["id"], "name": deck["name"], "in_use": deck["in_use"],
         "format": "constructed",
         "buildable": not missing, "cards": cards, "missing": missing,
         "missing_total": sum(c["missing"] for c in missing),
+        "missing_cost": missing_cost,
+        "missing_unpriced": sum(1 for c in missing if c["price_usd"] is None),
     }
 
 
@@ -422,6 +428,65 @@ def export_deck(deck_id: int):
         "validation": deck["validation"],
         "not_core_legal": not_core_legal,
         "core_legal": not not_core_legal and not deck["validation"],
+    }
+
+
+class WantedIn(BaseModel):
+    wanted: bool
+
+
+@router.put("/decks/{deck_id}/wanted")
+def set_wanted(deck_id: int, body: WantedIn):
+    if db.execute("UPDATE decks SET wanted=%s, updated_at=now() WHERE id=%s",
+                  (body.wanted, deck_id)) == 0:
+        raise HTTPException(404, "no such deck")
+    return _deck_row(deck_id)
+
+
+@router.get("/wantlist")
+def wantlist():
+    """Shopping list: missing copies aggregated across WANTED constructed decks
+    (not yet built), needed on top of copies already allocated to built decks.
+    Assumes you want every flagged deck buildable simultaneously."""
+    rows = db.query(
+        """SELECT c.id AS card_id, c.full_name, s.code AS set_code,
+                  c.collector_number, c.rarity, c.price_usd,
+                  sum(dc.qty) AS qty_wanted,
+                  array_agg(DISTINCT d.name ORDER BY d.name) AS decks,
+                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
+                  COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
+                            JOIN decks d2 ON d2.id = dc2.deck_id
+                            WHERE dc2.card_id = c.id AND d2.in_use
+                              AND d2.format = 'constructed'), 0) AS allocated
+           FROM deck_cards dc
+           JOIN decks d ON d.id = dc.deck_id
+             AND d.wanted AND NOT d.in_use AND d.format = 'constructed'
+           JOIN cards c ON c.id = dc.card_id
+           JOIN sets s ON s.id = c.set_id
+           LEFT JOIN collection col ON col.card_id = c.id
+           GROUP BY c.id, c.full_name, s.code, c.collector_number, c.rarity,
+                    c.price_usd, col.qty_normal, col.qty_foil""")
+    cards = []
+    for r in rows:
+        need = max(0, r["qty_wanted"] + r["allocated"] - r["owned"])
+        if not need:
+            continue
+        price = float(r["price_usd"]) if r["price_usd"] is not None else None
+        cards.append({**r, "need": need,
+                      "line_cost": round(price * need, 2) if price is not None else None})
+    cards.sort(key=lambda c: (-(c["line_cost"] or 0), c["full_name"]))
+    wanted_decks = db.query(
+        """SELECT id, name FROM decks
+           WHERE wanted AND NOT in_use AND format='constructed' ORDER BY name""")
+    return {
+        "wanted_decks": wanted_decks,
+        "cards": cards,
+        "total_cost": round(sum(c["line_cost"] or 0 for c in cards), 2),
+        "unpriced": sum(1 for c in cards if c["line_cost"] is None),
+        "text": "\n".join(
+            f"{c['need']} {c['full_name']} [{c['set_code']}/{c['collector_number']}]"
+            + (f" — ${c['line_cost']}" if c["line_cost"] is not None else "")
+            for c in cards),
     }
 
 

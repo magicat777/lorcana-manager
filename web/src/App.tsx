@@ -10,6 +10,7 @@ import EventDetail from './pages/EventDetail'
 import Brief from './pages/Brief'
 import Stats from './pages/Stats'
 import MatchStats from './pages/MatchStats'
+import Wantlist from './pages/Wantlist'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/decks" element={<Decks />} />
           <Route path="/decks/:id" element={<DeckDetail />} />
           <Route path="/decks/:id/export" element={<DeckExport />} />
+          <Route path="/wantlist" element={<Wantlist />} />
           <Route path="/matches" element={<Events />} />
           <Route path="/matches/stats" element={<MatchStats />} />
           <Route path="/matches/:id" element={<EventDetail />} />

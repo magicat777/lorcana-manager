@@ -37,7 +37,10 @@ export default function Decks() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <h1>Decks</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h1>Decks</h1>
+        <Link to="/wantlist">Want list →</Link>
+      </div>
       {error && <p className="error">{error}</p>}
       <div className="deckgrid">
         {decks.map((d) => (
@@ -46,6 +49,7 @@ export default function Decks() {
               {d.name}
               {d.format === 'sealed' && <span className="badge" style={{ marginLeft: 8 }}>SEALED</span>}
               {d.in_use && <span className="badge foil" style={{ marginLeft: 8 }}>◈ built</span>}
+              {d.wanted && !d.in_use && <span className="badge" style={{ marginLeft: 8 }}>★ want</span>}
             </h3>
             <p className="muted" style={{ margin: '0.3rem 0 0' }}>
               {d.card_total} cards{d.notes ? ` · ${d.notes}` : ''}

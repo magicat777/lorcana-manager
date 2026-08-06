@@ -114,7 +114,7 @@ lorcana/
 | API image | `localhost:30500/lorcana/api:fastapi-YYYYMMDD` |
 | Web image | `localhost:30500/lorcana/web:nginx-YYYYMMDD` |
 | Secrets | `lorcana-db` (DATABASE_URL, PGPASSWORD), `lorcana-ntfy` (LORCANA_NTFY_URL, optional) |
-| CronJobs | `lorcana-price-refresh` (Mon 06:00), `lorcana-daily-brief` (15:00 UTC = 8am PT) |
+| CronJobs | `lorcana-price-refresh` (Mon 06:00), `lorcana-news-fetch` (14:30 UTC), `lorcana-daily-brief` (15:00 UTC = 8am PT) |
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
@@ -329,7 +329,28 @@ until the seed job has inserted it.
 The brief's *price movers* section needs **at least two** history snapshots per
 card, so it stays empty until the second weekly run after setup.
 
-### 6.2 CronJob: `lorcana-daily-brief` — 15:00 UTC (8:00 PDT / 7:00 PST)
+### 6.2 CronJob: `lorcana-news-fetch` — daily 14:30 UTC
+
+Runs `python -m app.jobs.fetch_news`, half an hour before the brief so fresh
+items land in the morning push. Scrapes the official
+[disneylorcana.com news page](https://www.disneylorcana.com/en-US/news)
+(Ravensburger; server-rendered Nuxt markup, parsed with regexes — no headless
+browser) and upserts into `news_items`: title, category (News / Gameplay /
+Events / Strategy…), summary, image, published date. The URL is the identity;
+refetches update text in place, `first_seen_at` is set once.
+
+- The brief JSON carries the latest 8 items with an `is_new` flag
+  (`first_seen_at` within 36 h); the **text push and MCP brief list only new
+  items**, so unchanged news doesn't repeat every morning. The web Brief page
+  shows all 8 with NEW badges.
+- The job **fails loudly if a 200 page parses to zero items** — that means a
+  site redesign broke the selectors; fix the regexes in
+  `api/app/jobs/fetch_news.py` (`CARD_RE` / `FIELD_RES`).
+- To add another official channel, append a `(name, url, parser)` tuple to
+  `SOURCES` in the same file.
+- Manual run: `kubectl -n lorcana create job --from=cronjob/lorcana-news-fetch news-manual`.
+
+### 6.3 CronJob: `lorcana-daily-brief` — 15:00 UTC (8:00 PDT / 7:00 PST)
 
 Runs `python -m app.jobs.daily_brief`: builds the brief (tonight's league from
 the venue registry, week schedule, last-event recap + "one change" reminder,
@@ -341,7 +362,7 @@ and the `lorcana_brief` MCP tool.
 Note the schedule is UTC cron, so the local delivery time shifts one hour
 across DST changes. Both CronJobs use `concurrencyPolicy: Forbid`.
 
-### 6.3 Runbook: new set release
+### 6.4 Runbook: new set release
 
 1. `kubectl -n lorcana delete job lorcana-seed --ignore-not-found && kubectl apply -f deploy/jobs/seed-job.yaml` — pulls the new set + cards.
 2. Check whether the new set should be Core-legal; if the rotation window
@@ -399,6 +420,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
 | `price_history` | Append-only weekly snapshots per card (mig 007). Feeds price movers. |
+| `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
 
 Allocation ("free copies") is **not** a view — it's inline SQL in
 `api/app/routers/cards.py` and `decks.py`:
@@ -539,10 +561,12 @@ losses), and the daily brief's deck watch.
 ### 9.7 Brief (`/brief`)
 
 The daily digest on demand: tonight's league night (from venue
-`event_night`), week schedule, last event recap with your "one change"
-reminder, local meta (last 5 events), dead-card watch for your last deck,
-owned-card price movers, and collection totals. Identical content to the 8am
-push.
+`event_night`), week schedule, **official news** (latest 8 from
+disneylorcana.com with NEW badges on items first seen in the last 36 h), last
+event recap with your "one change" reminder, local meta (last 5 events),
+dead-card watch for your last deck, owned-card price movers, and collection
+totals. Identical content to the 8am push (the push includes only NEW news
+items).
 
 ---
 

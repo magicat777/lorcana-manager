@@ -11,6 +11,10 @@ interface BriefData {
     deck_name: string | null; one_change: string | null; biggest_problem: string | null
     days_ago: number
   } | null
+  news: {
+    title: string; url: string; category: string | null; summary: string | null
+    published_at: string | null; is_new: boolean
+  }[]
   meta_last5: { ink_pair: string; times_faced: number; losses_to: number }[]
   deck_watch: { value: string; mentions: number }[]
   price_movers: { full_name: string; price_now: string; price_prev: string; delta: string }[]
@@ -52,6 +56,24 @@ export default function Brief() {
           </p>
         )}
       </div>
+
+      {b.news.length > 0 && (
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>Official news</h3>
+          {b.news.map((n) => (
+            <p key={n.url} style={{ margin: '0.35rem 0' }}>
+              {n.is_new && <span className="ok" style={{ fontWeight: 600 }}>NEW </span>}
+              <a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>
+              <span className="muted">
+                {' '}— {n.category}{n.published_at ? `, ${n.published_at}` : ''}
+              </span>
+              {n.summary && (
+                <><br /><span className="muted" style={{ fontSize: '0.85rem' }}>{n.summary}</span></>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
 
       {b.last_event && (
         <div className="panel">

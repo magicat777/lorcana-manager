@@ -3,7 +3,9 @@
 Sections: tonight's league nights (venues.event_night — one source of truth
 with the match-log dropdown), the week's schedule, last-event recap (with the
 one-change reminder), local meta from recent matches, deck watch signals, price
-movers on owned cards (needs >=2 weekly snapshots), and collection totals."""
+movers on owned cards (needs >=2 weekly snapshots), official news (news_items,
+fetched daily by app.jobs.fetch_news — new-in-36h items make the text push),
+and collection totals."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -70,6 +72,12 @@ def build_brief() -> dict:
              AND abs(cur.usd - prev.usd) >= 0.50
            ORDER BY abs(cur.usd - prev.usd) DESC LIMIT 8""")
 
+    news = db.query(
+        """SELECT title, url, category, summary, published_at,
+                  (first_seen_at > now() - interval '36 hours') AS is_new
+           FROM news_items
+           ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 8""")
+
     totals = db.query_one(
         """SELECT count(*) FILTER (WHERE col.qty_normal + col.qty_foil > 0) AS unique_owned,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_copies,
@@ -82,6 +90,7 @@ def build_brief() -> dict:
         "today": {"weekday": today, "date": now.date().isoformat()},
         "tonight": tonight,
         "week_schedule": schedule,
+        "news": news,
         "last_event": last_event,
         "meta_last5": meta,
         "deck_watch": deck_watch,
@@ -102,6 +111,10 @@ def render_text(b: dict) -> str:
                      + "; ".join(f"{v['event_night']} {v['display_name']}" for v in b["week_schedule"]))
     else:
         lines.append("No venue league nights recorded yet — set event_night on venues to see them here.")
+    fresh = [n for n in b.get("news", []) if n["is_new"]]
+    if fresh:
+        lines.append("Official news: "
+                     + "; ".join(f"{n['title']} [{n['category']}]" for n in fresh[:5]))
     le = b["last_event"]
     if le:
         lines.append(f"Last event: {le['date']} {le['store']} — went {le['final_record'] or '?'}"

@@ -1,14 +1,14 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: lorcana-daily-brief
+  name: lorcana-news-fetch
   namespace: lorcana
   labels:
-    app: lorcana-daily-brief
+    app: lorcana-news-fetch
     ai.odin.managed: "true"
-    ai.odin.component: daily-brief
+    ai.odin.component: news-fetch
 spec:
-  schedule: "0 15 * * *"   # 15:00 UTC = 08:00 PDT morning brief
+  schedule: "30 14 * * *"   # 14:30 UTC, half an hour before the daily brief
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -18,26 +18,17 @@ spec:
       template:
         metadata:
           labels:
-            app: lorcana-daily-brief
+            app: lorcana-news-fetch
         spec:
           restartPolicy: Never
           containers:
-            - name: brief
+            - name: news-fetch
               image: localhost:30500/lorcana/api:fastapi-20260806
               imagePullPolicy: IfNotPresent
-              command: ["python", "-m", "app.jobs.daily_brief"]
+              command: ["python", "-m", "app.jobs.fetch_news"]
               envFrom:
                 - secretRef:
                     name: lorcana-db
-              env:
-                # Push only when this secret exists (private ntfy topic URL);
-                # otherwise the brief is log-only (readable in Loki).
-                - name: LORCANA_NTFY_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: lorcana-ntfy
-                      key: LORCANA_NTFY_URL
-                      optional: true
               resources:
                 requests:
                   cpu: 25m

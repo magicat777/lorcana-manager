@@ -10,6 +10,7 @@ resources:
   - web/service.yaml
   - jobs/price-refresh-cronjob.yaml
   - jobs/daily-brief-cronjob.yaml
+  - jobs/news-fetch-cronjob.yaml
 
 # NOTE: the lorcana-migrations ConfigMap is created by apply.sh from
 # ../db/migrations/ (kustomize refuses file sources outside this directory).

@@ -13,6 +13,7 @@ export default function Collection() {
   const [ink, setInk] = useState('')
   const [rarity, setRarity] = useState('')
   const [owned, setOwned] = useState('all')
+  const [core, setCore] = useState(false)
   const [page, setPage] = useState(1)
   const [data, setData] = useState<SearchResult | null>(null)
   const [error, setError] = useState('')
@@ -23,7 +24,7 @@ export default function Collection() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q, set, ink, rarity, owned, page })
+      get<SearchResult>('/cards', { q, set, ink, rarity, owned, page, ...(core ? { core: 'true' } : {}) })
         .then((d) => {
           setData(d)
           setError('')
@@ -31,7 +32,7 @@ export default function Collection() {
         .catch((e) => setError(String(e)))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, set, ink, rarity, owned, page])
+  }, [q, set, ink, rarity, owned, core, page])
 
   const reset = () => setPage(1)
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1
@@ -69,6 +70,10 @@ export default function Collection() {
           <option value="owned">Owned only</option>
           <option value="missing">Missing only</option>
         </select>
+        <label className="muted" style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={core} onChange={(e) => { setCore(e.target.checked); reset() }} />
+          {' '}Core-legal only
+        </label>
         {data && <span className="muted">{data.total} cards</span>}
       </div>
       {error && <p className="error">{error}</p>}

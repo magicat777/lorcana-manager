@@ -255,6 +255,8 @@ on the phone.
 | `LORCAST_BASE` | `https://api.lorcast.com/v0` | Lorcast API base for seed/price jobs. |
 | `LORCAST_DELAY_S` | `0.25` | Politeness sleep before every Lorcast request. |
 | `LORCANA_NTFY_URL` | *(unset)* | Read by `daily_brief` only. Unset ⇒ log-only brief. |
+| `LORCANA_HOME_LAT` / `LORCANA_HOME_LON` | *(unset)* | Home coords for nearest-first venue sorting. Env-only by design (privacy — set in the `lorcana-db` secret, never in the repo). Unset ⇒ venues sort A-Z. |
+| `LORCANA_NEXT_ROTATION` | *(unset)* | Next Core rotation date (ISO). Set when announced; the brief shows a countdown (⚠ inside 90 days). |
 
 ### 4.2 Kubernetes secrets
 
@@ -435,6 +437,13 @@ annual rotation (next ~July 2027): edit the range in 009 and run
 `./deploy/apply.sh`.** Deck exports show both our verdict and Lorcast's
 (`lorcast_says`) for contrast; trust ours.
 
+When Ravensburger announces the rotation date, set `LORCANA_NEXT_ROTATION`
+(e.g. patch it into the `lorcana-db` secret) — the brief counts down and turns
+⚠ inside 90 days. Legality is surfaced everywhere: ⟳ badges in the card
+browser (+ a "Core-legal only" filter), a legality line on card detail, a
+banner on deck pages, the export sheet, and `[NOT CORE-LEGAL]` markers in MCP
+card lines.
+
 ### 7.4 Set aliases (import says `unknown set`)
 
 The importer resolves a file's set label via `set_aliases` first, then numeric
@@ -484,8 +493,10 @@ set up.
 Browse the full catalog joined with your collection.
 
 - **Filters:** free-text search (card name *or* rules text), set, ink, rarity,
-  and Owned + missing / Owned only / Missing only. Search is debounced; 60
-  cards per page with a pager.
+  Owned + missing / Owned only / Missing only, and a **Core-legal only**
+  checkbox. Search is debounced; 60 cards per page with a pager.
+- Rotated (non-Core) cards carry a ⟳ marker on their tile and a red legality
+  line on the detail page.
 - **Tiles:** card image, count badges (normal, `✦N` foil, `◈N` allocated to
   built decks), ink dots, set·number, rarity. Unowned cards are dimmed.
 - Click any card for the detail page.

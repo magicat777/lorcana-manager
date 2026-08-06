@@ -6,10 +6,10 @@ one-change reminder), local meta from recent matches, deck watch signals, price
 movers on owned cards (needs >=2 weekly snapshots), official news (news_items,
 fetched daily by app.jobs.fetch_news — new-in-36h items make the text push),
 and collection totals."""
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from .. import db
+from .. import config, db
 
 TZ = ZoneInfo("America/Los_Angeles")
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -79,6 +79,21 @@ def build_brief() -> dict:
              AND run_at > now() - interval '36 hours'
            ORDER BY id""")
 
+    rotation = None
+    if config.NEXT_ROTATION:
+        try:
+            rot_date = date.fromisoformat(config.NEXT_ROTATION)
+            core = db.query_one(
+                """SELECT min(set_num) AS lo, max(set_num) AS hi
+                   FROM sets WHERE core_legal""")
+            rotation = {
+                "date": rot_date.isoformat(),
+                "days": (rot_date - now.date()).days,
+                "core_sets": f"{core['lo']}–{core['hi']}" if core and core["lo"] else "?",
+            }
+        except ValueError:
+            pass
+
     news = db.query(
         """SELECT title, url, category, summary, published_at,
                   (first_seen_at > now() - interval '36 hours') AS is_new
@@ -97,6 +112,7 @@ def build_brief() -> dict:
         "today": {"weekday": today, "date": now.date().isoformat()},
         "tonight": tonight,
         "week_schedule": schedule,
+        "rotation": rotation,
         "news": news,
         "last_event": last_event,
         "meta_last5": meta,
@@ -119,6 +135,10 @@ def render_text(b: dict) -> str:
                      + "; ".join(f"{v['event_night']} {v['display_name']}" for v in b["week_schedule"]))
     else:
         lines.append("No venue league nights recorded yet — set event_night on venues to see them here.")
+    rot = b.get("rotation")
+    if rot and 0 <= rot["days"] <= 90:
+        lines.append(f"⚠ Core rotation in {rot['days']}d ({rot['date']}) — "
+                     f"Core is currently sets {rot['core_sets']}; recheck deck legality.")
     fresh = [n for n in b.get("news", []) if n["is_new"]]
     if fresh:
         lines.append("Official news: "

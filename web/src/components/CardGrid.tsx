@@ -52,7 +52,10 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
                 <InkDots ink={c.ink} inks={c.inks} />
                 {c.set_code}·{c.collector_number}
               </span>
-              <span className="muted">{c.rarity?.replace('_', ' ')}</span>
+              <span className="muted">
+                {!c.core_legal && <span title="Not Core Constructed legal (set rotated)">⟳ </span>}
+                {c.rarity?.replace('_', ' ')}
+              </span>
             </div>
           </Link>
         )

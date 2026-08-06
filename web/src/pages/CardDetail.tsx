@@ -54,6 +54,9 @@ export default function CardDetail() {
               </>
             )}
           </p>
+          <p className={card.core_legal ? 'ok' : 'error'} style={{ fontSize: '0.88rem' }}>
+            {card.core_legal ? '✔ Core Constructed legal' : '⟳ Not Core Constructed legal (set rotated)'}
+          </p>
           <div className="statrow">
             {card.cost != null && <div className="stat"><div className="k">Cost</div><div className="v">{card.cost}{card.inkwell ? ' ◉' : ''}</div></div>}
             {card.strength != null && <div className="stat"><div className="k">Strength</div><div className="v">{card.strength}</div></div>}

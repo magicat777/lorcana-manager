@@ -171,6 +171,17 @@ export default function DeckDetail() {
       {deck.validation && deck.validation.length > 0 && (
         <p className="error">{deck.validation.map((w, i) => <span key={i}>⚠ {w}<br /></span>)}</p>
       )}
+      {deck.format !== 'sealed' && deck.cards && deck.cards.some((c) => !c.core_legal) && (
+        <p className="error">
+          ⟳ Not Core Constructed legal: {deck.cards.filter((c) => !c.core_legal)
+            .map((c) => `${c.qty}x ${c.full_name} (set ${c.set_code} rotated)`).join(', ')}
+        </p>
+      )}
+      {deck.format !== 'sealed' && deck.cards && deck.cards.length > 0
+        && deck.cards.every((c) => c.core_legal)
+        && (!deck.validation || deck.validation.length === 0) && (
+        <p className="ok">✔ Core Constructed legal.</p>
+      )}
 
       {deck.format === 'sealed' && (
         <div className="panel">

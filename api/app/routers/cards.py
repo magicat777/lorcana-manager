@@ -5,7 +5,7 @@ from ..services.matching import norm_number
 
 router = APIRouter()
 
-CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, c.collector_number,
+CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_legal, c.collector_number,
   c.name, c.version, c.full_name, c.ink, c.inks, c.cost, c.inkwell, c.type, c.classifications,
   c.keywords, c.body_text, c.flavor_text, c.strength, c.willpower, c.lore, c.move_cost,
   c.rarity, c.image_small, c.image_normal, c.image_large, c.price_usd, c.price_usd_foil,
@@ -37,6 +37,7 @@ def search_cards(
     rarity: str = "",
     type: str = "",
     owned: str = Query("all", pattern="^(all|owned|missing)$"),
+    core: bool = False,
     sort: str = Query("name", pattern="^(set|name|cost|price)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(60, ge=1, le=100),
@@ -57,6 +58,8 @@ def search_cards(
     if type:
         where.append("%s = ANY(c.type)")
         params.append(type)
+    if core:
+        where.append("s.core_legal")
     if owned == "owned":
         where.append("COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) > 0")
     elif owned == "missing":

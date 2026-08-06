@@ -11,6 +11,7 @@ interface BriefData {
     deck_name: string | null; one_change: string | null; biggest_problem: string | null
     days_ago: number
   } | null
+  rotation: { date: string; days: number; core_sets: string } | null
   news: {
     title: string; url: string; category: string | null; summary: string | null
     published_at: string | null; is_new: boolean
@@ -56,6 +57,15 @@ export default function Brief() {
           </p>
         )}
       </div>
+
+      {b.rotation && b.rotation.days >= 0 && (
+        <div className="panel">
+          <p className={b.rotation.days <= 90 ? 'error' : 'muted'} style={{ margin: 0 }}>
+            ⟳ Core rotation {b.rotation.date} — {b.rotation.days} days away.
+            Core is currently sets {b.rotation.core_sets}.
+          </p>
+        </div>
+      )}
 
       {b.news.length > 0 && (
         <div className="panel">

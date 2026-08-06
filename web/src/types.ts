@@ -3,6 +3,7 @@ export interface Card {
   set_id: string
   set_code: string
   set_name: string
+  core_legal: boolean
   collector_number: string
   name: string
   version: string | null
@@ -113,6 +114,7 @@ export interface DeckCardRow {
   rarity: string | null
   type: string[] | null
   set_code: string
+  core_legal: boolean
   collector_number: string
   image_small: string | null
   owned: number

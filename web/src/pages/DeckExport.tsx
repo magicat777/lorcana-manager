@@ -26,6 +26,7 @@ interface ExportData {
   validation: string[]
   not_core_legal: { full_name: string; qty: number; set_code: string; status: string }[]
   core_legal: boolean
+  format: 'constructed' | 'sealed'
 }
 
 export default function DeckExport() {
@@ -84,17 +85,29 @@ export default function DeckExport() {
         </div>
       </div>
 
-      {!d.core_legal && (
-        <div className="panel">
-          {d.validation.map((w, i) => <p className="error" key={i} style={{ margin: '0.2rem 0' }}>⚠ {w}</p>)}
-          {d.not_core_legal.length > 0 && (
-            <p className="error" style={{ margin: '0.2rem 0' }}>
-              ⚠ Not Core Constructed legal: {d.not_core_legal.map((x) => `${x.qty}x ${x.full_name} (${x.status})`).join(', ')}
-            </p>
+      {d.format === 'sealed' ? (
+        d.validation.length > 0 ? (
+          <div className="panel">
+            {d.validation.map((w, i) => <p className="error" key={i} style={{ margin: '0.2rem 0' }}>⚠ {w}</p>)}
+          </div>
+        ) : (
+          <p className="ok">✔ Sealed deck — {d.card_total} cards (minimum 40; pool-limited, no copy/ink restrictions).</p>
+        )
+      ) : (
+        <>
+          {!d.core_legal && (
+            <div className="panel">
+              {d.validation.map((w, i) => <p className="error" key={i} style={{ margin: '0.2rem 0' }}>⚠ {w}</p>)}
+              {d.not_core_legal.length > 0 && (
+                <p className="error" style={{ margin: '0.2rem 0' }}>
+                  ⚠ Not Core Constructed legal: {d.not_core_legal.map((x) => `${x.qty}x ${x.full_name} (${x.status})`).join(', ')}
+                </p>
+              )}
+            </div>
           )}
-        </div>
+          {d.core_legal && <p className="ok">✔ Legal for Core Constructed (60 cards, ≤4 per name, ≤2 inks, all cards Core-legal).</p>}
+        </>
       )}
-      {d.core_legal && <p className="ok">✔ Legal for Core Constructed (60 cards, ≤4 per name, ≤2 inks, all cards Core-legal).</p>}
 
       <table>
         <thead>

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import db
-from .routers import brief, cards, collection, decks, imports, matchlog, stats
+from .routers import brief, cards, collection, decks, imports, matchlog, sim, stats
 
 
 @asynccontextmanager
@@ -22,5 +22,5 @@ def health():
     return {"status": "ok"}
 
 
-for r in (brief, cards, collection, imports, decks, matchlog, stats):
+for r in (brief, cards, collection, imports, decks, matchlog, sim, stats):
     app.include_router(r.router, prefix="/api")

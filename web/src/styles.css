@@ -145,6 +145,27 @@ tr.bad td { color: var(--danger); }
 
 .sheet-fields { display: flex; gap: 2rem; flex-wrap: wrap; }
 
+/* Toggle buttons (ink pickers, tags, play/draw/W-L) — sized up on touch */
+.togglebtn { padding: 0.2rem 0.6rem; margin: 0 6px 4px 0; }
+.togglebtn.small { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
+
+/* Mobile: match logging happens on a phone at the venue */
+@media (max-width: 640px) {
+  .topbar { gap: 0.8rem; padding: 0.55rem 0.8rem; }
+  .topbar nav { gap: 0.8rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  main { padding: 0.8rem 0.8rem 4rem; }
+  table { display: block; overflow-x: auto; }
+  .detail img { width: 100%; max-width: 360px; }
+  .filterbar input, .filterbar select { flex: 1 1 40%; min-width: 0; }
+  .filterbar input[type='search'] { min-width: 0; }
+}
+@media (pointer: coarse) {
+  button { padding: 0.6rem 1rem; }
+  input, select { font-size: 1rem; padding: 0.55rem 0.6rem; }
+  .togglebtn { padding: 0.55rem 0.9rem; }
+  .togglebtn.small { font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+}
+
 @media print {
   .topbar, .no-print { display: none !important; }
   body { background: #fff; color: #000; }

@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --no-audit --no-fund
 COPY tsconfig.json vite.config.ts index.html ./
+COPY public/ public/
 COPY src/ src/
 RUN npm run build
 

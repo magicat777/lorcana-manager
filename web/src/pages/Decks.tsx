@@ -7,6 +7,7 @@ export default function Decks() {
   const [decks, setDecks] = useState<Deck[]>([])
   const [name, setName] = useState('')
   const [text, setText] = useState('')
+  const [format, setFormat] = useState<'constructed' | 'sealed'>('constructed')
   const [error, setError] = useState('')
   const nav = useNavigate()
 
@@ -17,7 +18,7 @@ export default function Decks() {
   const createEmpty = async () => {
     if (!name.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [], source: 'webui' })
+      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [], source: 'webui', format })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))
@@ -27,7 +28,7 @@ export default function Decks() {
   const importDeck = async () => {
     if (!name.trim() || !text.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text, source: 'webui' })
+      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text, source: 'webui', format })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))
@@ -43,6 +44,7 @@ export default function Decks() {
           <Link key={d.id} to={`/decks/${d.id}`} className="panel" style={{ textDecoration: 'none', color: 'inherit' }}>
             <h3 style={{ margin: 0 }}>
               {d.name}
+              {d.format === 'sealed' && <span className="badge" style={{ marginLeft: 8 }}>SEALED</span>}
               {d.in_use && <span className="badge foil" style={{ marginLeft: 8 }}>◈ built</span>}
             </h3>
             <p className="muted" style={{ margin: '0.3rem 0 0' }}>
@@ -57,6 +59,11 @@ export default function Decks() {
         <h3 style={{ marginTop: 0 }}>New deck</h3>
         <p>
           <input placeholder="Deck name" value={name} onChange={(e) => setName(e.target.value)} />
+          {'  '}
+          <select value={format} onChange={(e) => setFormat(e.target.value as 'constructed' | 'sealed')}>
+            <option value="constructed">Constructed (60 cards)</option>
+            <option value="sealed">Sealed / limited (40+ from pool)</option>
+          </select>
           {'  '}
           <button className="secondary" onClick={createEmpty} disabled={!name.trim()}>
             Create empty deck

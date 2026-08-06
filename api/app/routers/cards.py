@@ -11,7 +11,8 @@ CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, c.collect
   c.rarity, c.image_small, c.image_normal, c.image_large, c.price_usd, c.price_usd_foil,
   COALESCE(col.qty_normal, 0) AS qty_normal, COALESCE(col.qty_foil, 0) AS qty_foil,
   COALESCE((SELECT sum(dc.qty) FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
-            WHERE dc.card_id = c.id AND d.in_use), 0) AS qty_in_use"""
+            WHERE dc.card_id = c.id AND d.in_use
+              AND d.format = 'constructed'), 0) AS qty_in_use"""
 
 CARD_FROM = """FROM cards c
   JOIN sets s ON s.id = c.set_id

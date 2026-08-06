@@ -17,6 +17,7 @@ class DeckIn(BaseModel):
     notes: str = ""
     cards: list[DeckCard] = []
     source: str = "api"       # provenance: who wrote this ('mcp', 'webui', 'api')
+    format: str | None = None  # 'constructed' | 'sealed'; None = keep/default
 
 
 class DeckImportIn(BaseModel):
@@ -26,13 +27,25 @@ class DeckImportIn(BaseModel):
     overwrite: bool = False   # replace an existing deck of the same name
     source: str = "api"
     strict: bool = False      # refuse the write if validation warnings exist
+    format: str | None = None
 
 
-def _validate(cards: list[dict]) -> list[str]:
-    """Deck-legality warnings: 60 cards, max 4 per full name, at most 2 inks
-    (a dual-ink card is fine if it shares an ink with the deck's two)."""
+def _check_format(fmt: str | None) -> None:
+    if fmt is not None and fmt not in ("constructed", "sealed"):
+        raise HTTPException(422, "format must be 'constructed' or 'sealed'")
+
+
+def _validate(cards: list[dict], fmt: str = "constructed") -> list[str]:
+    """Deck-legality warnings. Constructed: 60 cards, max 4 per full name, at
+    most 2 inks (a dual-ink card is fine if it shares an ink with the deck's
+    two). Sealed/limited: minimum 40 cards — the copy and ink limits do not
+    apply (the pool is the limit)."""
     warnings = []
     total = sum(c["qty"] for c in cards)
+    if fmt == "sealed":
+        if total < 40:
+            warnings.append(f"{total} cards — sealed decks are at least 40")
+        return warnings
     if total != 60:
         warnings.append(f"{total} cards — constructed decks are exactly 60")
     by_name: dict[str, int] = {}
@@ -72,6 +85,7 @@ def _deck_row(deck_id: int) -> dict:
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                             JOIN decks d2 ON d2.id = dc2.deck_id
                             WHERE dc2.card_id = dc.card_id AND d2.in_use
+                              AND d2.format = 'constructed'
                               AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere
            FROM deck_cards dc
            JOIN cards c ON c.id = dc.card_id
@@ -83,8 +97,23 @@ def _deck_row(deck_id: int) -> dict:
     )
     for c in deck["cards"]:
         c["free"] = max(0, c["owned"] - c["allocated_elsewhere"])
+    if deck["format"] == "sealed":
+        deck["pool"] = db.query(
+            """SELECT dp.card_id, dp.qty, c.full_name, c.ink, c.inks, c.cost,
+                      c.rarity, c.type, s.code AS set_code, c.collector_number
+               FROM deck_pool dp
+               JOIN cards c ON c.id = dp.card_id
+               JOIN sets s ON s.id = c.set_id
+               WHERE dp.deck_id = %s
+               ORDER BY c.cost NULLS LAST, c.full_name""",
+            (deck_id,),
+        )
+        pool_qty = {p["card_id"]: p["qty"] for p in deck["pool"]}
+        for c in deck["cards"]:
+            c["in_pool"] = pool_qty.get(c["card_id"], 0)
+        deck["pool_total"] = sum(p["qty"] for p in deck["pool"])
     deck["card_total"] = sum(c["qty"] for c in deck["cards"])
-    deck["validation"] = _validate(deck["cards"])
+    deck["validation"] = _validate(deck["cards"], deck["format"])
     return deck
 
 
@@ -101,7 +130,7 @@ def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
 @router.get("/decks")
 def list_decks():
     return db.query(
-        """SELECT d.id, d.name, d.notes, d.in_use, d.updated_at,
+        """SELECT d.id, d.name, d.notes, d.in_use, d.format, d.updated_at,
                   COALESCE(sum(dc.qty), 0) AS card_total
            FROM decks d LEFT JOIN deck_cards dc ON dc.deck_id = d.id
            GROUP BY d.id ORDER BY d.in_use DESC, d.name"""
@@ -110,12 +139,14 @@ def list_decks():
 
 @router.post("/decks", status_code=201)
 def create_deck(body: DeckIn):
+    _check_format(body.format)
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO decks (name, notes, created_source) VALUES (%s,%s,%s) RETURNING id",
-                    (body.name, body.notes, body.source),
+                    "INSERT INTO decks (name, notes, created_source, format)"
+                    " VALUES (%s,%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source, body.format or "constructed"),
                 )
             except Exception:
                 raise HTTPException(409, f"deck {body.name!r} already exists")
@@ -127,6 +158,7 @@ def create_deck(body: DeckIn):
 
 @router.post("/decks/import", status_code=201)
 def import_deck(body: DeckImportIn):
+    _check_format(body.format)
     entries, bad_lines = deck_import.parse_deck_text(body.text)
     if not entries:
         raise HTTPException(422, "no parseable deck lines")
@@ -142,7 +174,7 @@ def import_deck(body: DeckImportIn):
                 (list(wanted),),
             )
             card_rows = [{**r, "qty": wanted[r["id"]]} for r in cur.fetchall()]
-            warnings = _validate(card_rows)
+            warnings = _validate(card_rows, body.format or "constructed")
             if body.strict and warnings:
                 raise HTTPException(422, detail={
                     "error": "deck failed validation (strict mode) — nothing written",
@@ -174,13 +206,15 @@ def import_deck(body: DeckImportIn):
             if existing:
                 deck_id = existing["id"]
                 cur.execute(
-                    "UPDATE decks SET notes=%s, updated_at=now(), updated_source=%s WHERE id=%s",
-                    (body.notes, body.source, deck_id),
+                    "UPDATE decks SET notes=%s, updated_at=now(), updated_source=%s,"
+                    " format=COALESCE(%s, format) WHERE id=%s",
+                    (body.notes, body.source, body.format, deck_id),
                 )
             else:
                 cur.execute(
-                    "INSERT INTO decks (name, notes, created_source) VALUES (%s,%s,%s) RETURNING id",
-                    (body.name, body.notes, body.source),
+                    "INSERT INTO decks (name, notes, created_source, format)"
+                    " VALUES (%s,%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source, body.format or "constructed"),
                 )
                 deck_id = cur.fetchone()["id"]
         _write_cards(conn, deck_id, [DeckCard(**c) for c in matched])
@@ -199,13 +233,15 @@ def get_deck(deck_id: int):
 
 @router.put("/decks/{deck_id}")
 def update_deck(deck_id: int, body: DeckIn):
+    _check_format(body.format)
     if not db.query_one("SELECT 1 FROM decks WHERE id=%s", (deck_id,)):
         raise HTTPException(404, "no such deck")
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE decks SET name=%s, notes=%s, updated_at=now(), updated_source=%s WHERE id=%s",
-                (body.name, body.notes, body.source, deck_id),
+                "UPDATE decks SET name=%s, notes=%s, updated_at=now(), updated_source=%s,"
+                " format=COALESCE(%s, format) WHERE id=%s",
+                (body.name, body.notes, body.source, body.format, deck_id),
             )
         _write_cards(conn, deck_id, body.cards)
         conn.commit()
@@ -224,8 +260,30 @@ class InUseIn(BaseModel):
 
 
 def _buildable(deck: dict) -> dict:
-    """Validate against FREE copies: owned minus copies allocated to OTHER
-    in_use decks. 'have' stays raw owned for reference."""
+    """Constructed: validate against FREE copies — owned minus copies allocated
+    to OTHER in_use constructed decks ('have' stays raw owned for reference).
+    Sealed: validate against the deck's own pool (packs opened), never the
+    collection; an empty pool means untracked, not unbuildable."""
+    if deck["format"] == "sealed":
+        cards = [
+            {
+                "card_id": c["card_id"], "full_name": c["full_name"],
+                "need": c["qty"], "have": c["in_pool"], "free": c["in_pool"],
+                "missing": max(0, c["qty"] - c["in_pool"]),
+            }
+            for c in deck["cards"]
+        ]
+        missing = [c for c in cards if c["missing"] > 0]
+        if not deck.get("pool"):
+            missing = []
+        return {
+            "deck_id": deck["id"], "name": deck["name"], "in_use": deck["in_use"],
+            "format": "sealed", "pool_total": deck.get("pool_total", 0),
+            "buildable": not missing, "cards": cards, "missing": missing,
+            "missing_total": sum(c["missing"] for c in missing),
+            "note": None if deck.get("pool") else
+                    "no pool recorded — add the packs you opened to track this",
+        }
     cards = [
         {
             "card_id": c["card_id"], "full_name": c["full_name"],
@@ -238,6 +296,7 @@ def _buildable(deck: dict) -> dict:
     missing = [c for c in cards if c["missing"] > 0]
     return {
         "deck_id": deck["id"], "name": deck["name"], "in_use": deck["in_use"],
+        "format": "constructed",
         "buildable": not missing, "cards": cards, "missing": missing,
         "missing_total": sum(c["missing"] for c in missing),
     }
@@ -246,6 +305,52 @@ def _buildable(deck: dict) -> dict:
 @router.get("/decks/{deck_id}/buildable")
 def buildable(deck_id: int):
     return _buildable(_deck_row(deck_id))
+
+
+class PoolImportIn(BaseModel):
+    text: str
+    mode: str = "add"   # add (weekly packs) | replace (full correction)
+
+
+@router.post("/decks/{deck_id}/pool/import")
+def import_pool(deck_id: int, body: PoolImportIn):
+    """Add opened cards to a sealed deck's pool from a text list
+    ('2 Elsa - Spirit of Winter' per line). mode=add accumulates (league weeks);
+    mode=replace rewrites the pool from scratch."""
+    if body.mode not in ("add", "replace"):
+        raise HTTPException(422, "mode must be 'add' or 'replace'")
+    deck = db.query_one("SELECT id, format FROM decks WHERE id=%s", (deck_id,))
+    if not deck:
+        raise HTTPException(404, "no such deck")
+    if deck["format"] != "sealed":
+        raise HTTPException(422, "pool tracking is for sealed decks only")
+    entries, bad_lines = deck_import.parse_deck_text(body.text)
+    if not entries:
+        raise HTTPException(422, "no parseable card lines")
+    with db.pool.connection() as conn:
+        with conn.cursor() as cur:
+            matched, unmatched = deck_import.match_deck_entries(cur, entries)
+            if body.mode == "replace":
+                cur.execute("DELETE FROM deck_pool WHERE deck_id=%s", (deck_id,))
+            for c in matched:
+                cur.execute(
+                    """INSERT INTO deck_pool (deck_id, card_id, qty) VALUES (%s,%s,%s)
+                       ON CONFLICT (deck_id, card_id)
+                       DO UPDATE SET qty = deck_pool.qty + EXCLUDED.qty""",
+                    (deck_id, c["card_id"], c["qty"]),
+                )
+        conn.commit()
+    result = _deck_row(deck_id)
+    result["unmatched"] = unmatched + [
+        {"qty": None, "name": l, "reason": "unparseable line"} for l in bad_lines]
+    return result
+
+
+@router.delete("/decks/{deck_id}/pool/{card_id}", status_code=204)
+def remove_pool_card(deck_id: int, card_id: str):
+    if db.execute("DELETE FROM deck_pool WHERE deck_id=%s AND card_id=%s",
+                  (deck_id, card_id)) == 0:
+        raise HTTPException(404, "card not in pool")
 
 
 @router.get("/decks/{deck_id}/export")
@@ -286,8 +391,9 @@ def export_deck(deck_id: int):
 
     total = deck["card_total"]
     # Core legality = sets.core_legal (maintained via migration 009); Lorcast's
-    # legalities field proved stale on rotation and new-set dates.
-    not_core_legal = [
+    # legalities field proved stale on rotation and new-set dates. Sealed decks
+    # play whatever the packs contained — set legality does not apply.
+    not_core_legal = [] if deck["format"] == "sealed" else [
         {"full_name": c["full_name"], "qty": c["qty"], "set_code": c["set_code"],
          "status": f"set {c['set_code']} rotated out / not Core-legal",
          "lorcast_says": (c.get("legalities") or {}).get("core", "unknown")}
@@ -297,7 +403,7 @@ def export_deck(deck_id: int):
 
     return {
         "deck_id": deck["id"], "name": deck["name"], "notes": deck["notes"],
-        "in_use": deck["in_use"], "card_total": total,
+        "in_use": deck["in_use"], "format": deck["format"], "card_total": total,
         "text": text,
         "cards": [
             {k: c[k] for k in ("qty", "full_name", "set_code", "collector_number",
@@ -325,11 +431,15 @@ def set_in_use(deck_id: int, body: InUseIn):
     if body.in_use and not deck["in_use"] and not body.force:
         b = _buildable(deck)
         if b["missing"]:
+            sealed = deck["format"] == "sealed"
             raise HTTPException(409, detail={
-                "error": "not enough free copies to build this deck",
+                "error": ("deck uses cards that aren't in its sealed pool" if sealed
+                          else "not enough free copies to build this deck"),
                 "missing": b["missing"],
-                "hint": "cards are allocated to other in-use decks or not owned; "
-                        "send force=true to mark it built anyway",
+                "hint": ("add the missing pulls to the pool or fix the deck; "
+                         "send force=true to mark it built anyway" if sealed else
+                         "cards are allocated to other in-use decks or not owned; "
+                         "send force=true to mark it built anyway"),
             })
     db.execute("UPDATE decks SET in_use=%s, updated_at=now() WHERE id=%s",
                (body.in_use, deck_id))

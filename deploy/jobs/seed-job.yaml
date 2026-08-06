@@ -18,7 +18,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: seed
-          image: localhost:30500/lorcana/api:fastapi-20260806
+          image: localhost:30500/lorcana/api:fastapi-20260806e
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "app.jobs.seed_catalog"]
           envFrom:

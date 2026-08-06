@@ -12,6 +12,7 @@ export default function Events() {
     date: new Date().toISOString().slice(0, 10),
     venue_slug: '',
     store: '',
+    format: 'Core Constructed',
     deck_id: '',
     deck_version: '',
     rounds: '',
@@ -32,6 +33,7 @@ export default function Events() {
         date: form.date,
         venue_slug: form.venue_slug !== 'other' ? form.venue_slug || null : null,
         store: form.venue_slug === 'other' ? form.store.trim() : '',
+        format: form.format,
         deck_id: form.deck_id ? Number(form.deck_id) : null,
         deck_version: form.deck_version,
         rounds: form.rounds ? Number(form.rounds) : null,
@@ -46,7 +48,10 @@ export default function Events() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <h1>Match Log</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h1>Match Log</h1>
+        <Link to="/matches/stats">Win-rate analytics →</Link>
+      </div>
       <p className="muted">
         Rule 5.2: no notes during a match. Fill this in <strong>between rounds</strong>,
         review it <strong>before pairings</strong> — never at the table.
@@ -85,6 +90,11 @@ export default function Events() {
           {form.venue_slug === 'other' && (
             <input placeholder="Store name" value={form.store} onChange={(e) => setForm({ ...form, store: e.target.value })} />
           )}
+          <select value={form.format} onChange={(e) => setForm({ ...form, format: e.target.value })}>
+            <option value="Core Constructed">Core Constructed</option>
+            <option value="Sealed">Sealed</option>
+            <option value="Draft">Draft</option>
+          </select>
           <select value={form.deck_id} onChange={(e) => setForm({ ...form, deck_id: e.target.value })}>
             <option value="">My deck…</option>
             {decks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}

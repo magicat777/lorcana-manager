@@ -414,7 +414,8 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
 | `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary. |
-| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; provenance `created_source`/`updated_source` ∈ api/webui/mcp (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
+| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); provenance `created_source`/`updated_source` ∈ api/webui/mcp (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
+| `deck_pool` | Sealed decks only (mig 011): the cards opened from packs, grows weekly in a league. Sealed decks validate/build against their pool, never the collection, and are excluded from `in_use` allocation. |
 | `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','DRAW','BYE'), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
@@ -519,7 +520,14 @@ legacy `Name, Normal, Foil, Set, Card Number`).
 ### 9.5 Decks (`/decks`, `/decks/{id}`)
 
 - **Create:** empty deck by name, or paste a Dreamborn text list
-  (`4 Elsa - Spirit of Winter` per line) and import.
+  (`4 Elsa - Spirit of Winter` per line) and import. Pick the format at
+  creation: **Constructed** (60 cards, ≤4 per name, ≤2 inks) or **Sealed /
+  limited** (minimum 40 cards, no copy/ink limits — Lorcana limited rules).
+- **Sealed decks** get a SEALED badge and a **pool panel**: paste each week's
+  pulls and they accumulate; the deck validates and builds against the pool
+  (rows go red when the deck uses cards not in the pool), never against your
+  collection — and marking a sealed deck built never allocates collection
+  copies, since pack cards are separate physical cards.
 - **Deck detail:** add cards via live search; per-card −/+ qty (⚠ above 4
   copies), owned and **free** columns (free = not allocated to other built
   decks; short rows highlighted); remove with ✕. Every edit saves immediately.
@@ -584,7 +592,8 @@ be dictated conversationally between rounds.
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |
 | `lorcana_missing` | Want-list: unowned cards in a set with rarity + price. |
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
-| `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode); reports buildability. Never touches collection counts. |
+| `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
+| `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Permanent delete (confirm with the user first). |
@@ -616,7 +625,9 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /brief` | Structured brief + rendered `text`. |
 | `GET/POST /decks`, `GET/PUT/DELETE /decks/{id}` | Deck CRUD (name unique; PUT replaces the whole card list). |
 | `POST /decks/import` | Text list import: `overwrite`, `strict` (422 with warnings), idempotent (`unchanged`). |
-| `GET /decks/{id}/buildable` | Free-copy check with per-card shortfalls. |
+| `GET /decks/{id}/buildable` | Free-copy check with per-card shortfalls (sealed decks: pool check instead). |
+| `POST /decks/{id}/pool/import` | Add/replace a sealed deck's pool from a text list. |
+| `DELETE /decks/{id}/pool/{card_id}` | Remove a card from a sealed pool. |
 | `GET /decks/{id}/export` | Text list + composition + Core legality. |
 | `PUT /decks/{id}/in_use` | Toggle allocation; 409 with shortfall unless `force`. |
 | `GET/POST /events`, `GET/PUT/DELETE /events/{id}` | Event CRUD; PUT is the post-event partial update (replaces event-level observations when given). |

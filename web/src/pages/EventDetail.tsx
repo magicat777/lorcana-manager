@@ -155,8 +155,8 @@ export default function EventDetail() {
         <p style={{ margin: '0.4rem 0' }}>
           <span className="muted">Their inks (pick 2): </span>
           {INKS.map((ink) => (
-            <button key={ink} className={m.inks.includes(ink) ? '' : 'secondary'}
-              style={{ marginRight: 6, padding: '0.2rem 0.6rem' }} onClick={() => toggleInk(ink)}>
+            <button key={ink} className={m.inks.includes(ink) ? 'togglebtn' : 'togglebtn secondary'}
+              onClick={() => toggleInk(ink)}>
               {ink}
             </button>
           ))}
@@ -164,8 +164,7 @@ export default function EventDetail() {
         <p style={{ margin: '0.4rem 0' }}>
           <span className="muted">They ran: </span>
           {TAGS.map((t) => (
-            <button key={t} className={m.tags.includes(t) ? '' : 'secondary'}
-              style={{ marginRight: 6, marginBottom: 4, padding: '0.15rem 0.5rem', fontSize: '0.8rem' }}
+            <button key={t} className={m.tags.includes(t) ? 'togglebtn small' : 'togglebtn small secondary'}
               onClick={() => setM({ ...m, tags: m.tags.includes(t) ? m.tags.filter((x) => x !== t) : [...m.tags, t] })}>
               {t}
             </button>
@@ -183,12 +182,12 @@ export default function EventDetail() {
               <tr key={g.game_no}>
                 <td>G{g.game_no}</td>
                 <td>
-                  <button className={g.on_play === true ? '' : 'secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, on_play: true } : x) })}>play</button>{' '}
-                  <button className={g.on_play === false ? '' : 'secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, on_play: false } : x) })}>draw</button>
+                  <button className={g.on_play === true ? 'togglebtn' : 'togglebtn secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, on_play: true } : x) })}>play</button>
+                  <button className={g.on_play === false ? 'togglebtn' : 'togglebtn secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, on_play: false } : x) })}>draw</button>
                 </td>
                 <td>
-                  <button className={g.won === true ? '' : 'secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, won: true } : x) })}>W</button>{' '}
-                  <button className={g.won === false ? '' : 'secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, won: false } : x) })}>L</button>
+                  <button className={g.won === true ? 'togglebtn' : 'togglebtn secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, won: true } : x) })}>W</button>
+                  <button className={g.won === false ? 'togglebtn' : 'togglebtn secondary'} onClick={() => setM({ ...m, games: m.games.map((x, j) => j === i ? { ...x, won: false } : x) })}>L</button>
                 </td>
                 <td>
                   {g.won === false && (

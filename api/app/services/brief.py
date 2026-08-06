@@ -72,6 +72,13 @@ def build_brief() -> dict:
              AND abs(cur.usd - prev.usd) >= 0.50
            ORDER BY abs(cur.usd - prev.usd) DESC LIMIT 8""")
 
+    sim_lab = db.query(
+        """SELECT engine_build, matchup, games, p0_wins, p1_wins, avg_turns
+           FROM sim_results
+           WHERE run_at = (SELECT max(run_at) FROM sim_results)
+             AND run_at > now() - interval '36 hours'
+           ORDER BY id""")
+
     news = db.query(
         """SELECT title, url, category, summary, published_at,
                   (first_seen_at > now() - interval '36 hours') AS is_new
@@ -93,6 +100,7 @@ def build_brief() -> dict:
         "news": news,
         "last_event": last_event,
         "meta_last5": meta,
+        "sim_lab": sim_lab,
         "deck_watch": deck_watch,
         "price_movers": movers,
         "collection": totals,
@@ -128,6 +136,14 @@ def render_text(b: dict) -> str:
                      + "; ".join(f"{m['ink_pair']} x{m['times_faced']}"
                                  + (f" ({m['losses_to']}L)" if m["losses_to"] else "")
                                  for m in b["meta_last5"]))
+    if b.get("sim_lab"):
+        parts = []
+        for s in b["sim_lab"]:
+            decks_part, _, pol = s["matchup"].partition("+")
+            pct = 100 * s["p0_wins"] / s["games"]
+            parts.append(f"{decks_part} ({pol or 'random'}): P0 {pct:.1f}% of {s['games']}")
+        lines.append(f"Sim lab overnight [{b['sim_lab'][0]['engine_build']}]: "
+                     + "; ".join(parts))
     if b["deck_watch"]:
         lines.append("Deck watch — dead-card mentions: "
                      + ", ".join(f"{d['value']} x{d['mentions']}" for d in b["deck_watch"]))

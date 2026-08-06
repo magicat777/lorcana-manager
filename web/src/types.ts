@@ -118,6 +118,20 @@ export interface DeckCardRow {
   owned: number
   allocated_elsewhere: number
   free: number
+  in_pool?: number
+}
+
+export interface PoolRow {
+  card_id: string
+  qty: number
+  full_name: string
+  ink: string | null
+  inks: string[] | null
+  cost: number | null
+  rarity: string | null
+  type: string[] | null
+  set_code: string
+  collector_number: string
 }
 
 export interface Deck {
@@ -125,12 +139,15 @@ export interface Deck {
   name: string
   notes: string | null
   in_use: boolean
+  format: 'constructed' | 'sealed'
   updated_at: string
   card_total: number
   created_source?: string
   updated_source?: string | null
   validation?: string[]
   cards?: DeckCardRow[]
+  pool?: PoolRow[]
+  pool_total?: number
   unmatched?: { qty: number | null; name: string; reason: string }[]
 }
 

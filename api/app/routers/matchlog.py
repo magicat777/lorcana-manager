@@ -308,6 +308,76 @@ def ink_pairs(store: str = "", last_events: int = 0):
             GROUP BY 1 ORDER BY times_faced DESC, losses_to DESC""", params)
 
 
+@router.get("/matchlog/stats")
+def match_stats(deck_id: int = 0):
+    """Aggregate win-rate analytics over the whole match log (optionally one
+    deck): overall record, per-deck, play-vs-draw, game 1 vs games 2/3, loss
+    modes, and opponent archetype shapes. Percentages are left to the client."""
+    where, params = ["1=1"], []
+    if deck_id:
+        where.append("e.deck_id = %s")
+        params.append(deck_id)
+    w = " AND ".join(where)
+
+    overall = db.query_one(
+        f"""SELECT count(*) AS matches,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS wins,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS losses,
+                   count(*) FILTER (WHERE m.result = 'DRAW') AS draws,
+                   count(*) FILTER (WHERE m.result = 'BYE') AS byes,
+                   count(DISTINCT e.id) AS events
+            FROM matches m JOIN events e ON e.id = m.event_id WHERE {w}""",
+        [list(WIN_RESULTS), list(LOSS_RESULTS)] + params)
+
+    by_deck = db.query(
+        f"""SELECT e.deck_id, d.name AS deck_name, count(DISTINCT e.id) AS events,
+                   count(*) AS matches,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS wins,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS losses
+            FROM matches m JOIN events e ON e.id = m.event_id
+            LEFT JOIN decks d ON d.id = e.deck_id WHERE {w}
+            GROUP BY e.deck_id, d.name ORDER BY count(*) DESC""",
+        [list(WIN_RESULTS), list(LOSS_RESULTS)] + params)
+
+    play_draw = db.query(
+        f"""SELECT g.on_play, count(*) AS games,
+                   count(*) FILTER (WHERE g.won) AS wins
+            FROM games g JOIN matches m ON m.id = g.match_id
+            JOIN events e ON e.id = m.event_id
+            WHERE {w} AND g.on_play IS NOT NULL AND g.won IS NOT NULL
+            GROUP BY g.on_play""", params)
+
+    by_game_no = db.query(
+        f"""SELECT g.game_no, count(*) AS games,
+                   count(*) FILTER (WHERE g.won) AS wins
+            FROM games g JOIN matches m ON m.id = g.match_id
+            JOIN events e ON e.id = m.event_id
+            WHERE {w} AND g.won IS NOT NULL
+            GROUP BY g.game_no ORDER BY g.game_no""", params)
+
+    loss_modes = db.query(
+        f"""SELECT g.loss_mode, count(*) AS count
+            FROM games g JOIN matches m ON m.id = g.match_id
+            JOIN events e ON e.id = m.event_id
+            WHERE {w} AND g.won = false AND g.loss_mode <> 'na'
+            GROUP BY g.loss_mode ORDER BY count(*) DESC""", params)
+
+    by_shape = db.query(
+        f"""SELECT m.opp_shape, count(*) AS matches,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS wins,
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS losses
+            FROM matches m JOIN events e ON e.id = m.event_id
+            WHERE {w} AND m.opp_shape <> 'unclear'
+            GROUP BY m.opp_shape ORDER BY count(*) DESC""",
+        [list(WIN_RESULTS), list(LOSS_RESULTS)] + params)
+
+    return {
+        "deck_id": deck_id or None, "overall": overall, "by_deck": by_deck,
+        "play_draw": play_draw, "by_game_no": by_game_no,
+        "loss_modes": loss_modes, "by_shape": by_shape,
+    }
+
+
 @router.get("/matchlog/cut-list")
 def cut_list(deck_id: int):
     """Deck cards never recorded as my_mvp — the evidence-based cut list.

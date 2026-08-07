@@ -11,6 +11,7 @@ import Brief from './pages/Brief'
 import Stats from './pages/Stats'
 import MatchStats from './pages/MatchStats'
 import Wantlist from './pages/Wantlist'
+import Sim from './pages/Sim'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <NavLink to="/stats">Stats</NavLink>
           <NavLink to="/decks">Decks</NavLink>
           <NavLink to="/matches">Matches</NavLink>
+          <NavLink to="/sim">Sim</NavLink>
           <NavLink to="/brief">Brief</NavLink>
           <NavLink to="/upload">Upload</NavLink>
         </nav>
@@ -38,6 +40,7 @@ export default function App() {
           <Route path="/matches" element={<Events />} />
           <Route path="/matches/stats" element={<MatchStats />} />
           <Route path="/matches/:id" element={<EventDetail />} />
+          <Route path="/sim" element={<Sim />} />
           <Route path="/brief" element={<Brief />} />
           <Route path="/stats" element={<Stats />} />
         </Routes>

@@ -215,6 +215,9 @@ export default function DeckDetail() {
           <Link to={`/decks/${deck.id}/export`} style={{ marginRight: 8 }}>
             <button className="secondary">Export / print</button>
           </Link>
+          <Link to={`/sim?deck=${deck.id}`} style={{ marginRight: 8 }}>
+            <button className="secondary">Simulate</button>
+          </Link>
           <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
             {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
           </button>

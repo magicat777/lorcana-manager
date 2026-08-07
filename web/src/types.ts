@@ -245,3 +245,28 @@ export interface Totals {
   value_total: number
   catalog_cards: number
 }
+
+export interface SimRun {
+  id: number
+  deck_id: number
+  deck_name?: string
+  opponent: string
+  opponent_label: string | null
+  games: number
+  policy: string
+  seed_base: number | null
+  status: 'queued' | 'running' | 'complete' | 'unsupported' | 'error'
+  requested_by: string | null
+  requested_at: string
+  finished_at: string | null
+  engine_build: string | null
+  wins: number | null
+  losses: number | null
+  win_rate: string | number | null
+  avg_turns: string | number | null
+  wins_as_p0: number | null
+  wins_as_p1: number | null
+  elapsed_s: string | number | null
+  error: string | null
+  unsupported_cards: { full_name: string; qty?: number; reason: string }[] | null
+}

@@ -6,21 +6,44 @@ import type { SearchResult, SetInfo } from '../types'
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Super_rare', 'Legendary', 'Enchanted']
 
+const FILTER_KEY = 'cards.filters'
+
+const loadFilters = () => {
+  try {
+    return { q: '', set: '', ink: '', rarity: '', owned: 'all', core: false, page: 1,
+             ...JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}') }
+  } catch {
+    return { q: '', set: '', ink: '', rarity: '', owned: 'all', core: false, page: 1 }
+  }
+}
+
 export default function Collection() {
+  const saved = loadFilters()
   const [sets, setSets] = useState<SetInfo[]>([])
-  const [q, setQ] = useState('')
-  const [set, setSet] = useState('')
-  const [ink, setInk] = useState('')
-  const [rarity, setRarity] = useState('')
-  const [owned, setOwned] = useState('all')
-  const [core, setCore] = useState(false)
-  const [page, setPage] = useState(1)
+  const [q, setQ] = useState<string>(saved.q)
+  const [set, setSet] = useState<string>(saved.set)
+  const [ink, setInk] = useState<string>(saved.ink)
+  const [rarity, setRarity] = useState<string>(saved.rarity)
+  const [owned, setOwned] = useState<string>(saved.owned)
+  const [core, setCore] = useState<boolean>(saved.core)
+  const [page, setPage] = useState<number>(saved.page)
   const [data, setData] = useState<SearchResult | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     get<SetInfo[]>('/sets').then(setSets).catch((e) => setError(String(e)))
   }, [])
+
+  // Filters survive card-detail visits / browser back until Reset (per tab).
+  useEffect(() => {
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, owned, core, page }))
+  }, [q, set, ink, rarity, owned, core, page])
+
+  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || owned !== 'all' || core
+  const resetFilters = () => {
+    sessionStorage.removeItem(FILTER_KEY)
+    setQ(''); setSet(''); setInk(''); setRarity(''); setOwned('all'); setCore(false); setPage(1)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -74,6 +97,11 @@ export default function Collection() {
           <input type="checkbox" checked={core} onChange={(e) => { setCore(e.target.checked); reset() }} />
           {' '}Core-legal only
         </label>
+        {hasFilters && (
+          <button className="secondary" onClick={resetFilters} title="Clear all filters">
+            ✕ Reset
+          </button>
+        )}
         {data && <span className="muted">{data.total} cards</span>}
       </div>
       {error && <p className="error">{error}</p>}

@@ -49,6 +49,28 @@ export default function Sim() {
     return () => window.clearInterval(timer.current)
   }, [runs, load])
 
+  // Re-run a previous run's exact seeds against the (edited) deck —
+  // identical shuffles, so the delta is the decklist change, not luck.
+  const rerunPaired = async (r: SimRun) => {
+    setBusy(true)
+    setError('')
+    try {
+      await send<SimRun>('POST', `/decks/${r.deck_id}/sim`, {
+        opponent: r.opponent,
+        games: r.games,
+        policy: r.policy,
+        analyze: r.analyze_requested,
+        seed_base: r.seed_base,
+        requested_by: 'webui-paired',
+      })
+      load()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const queue = async () => {
     if (!deckId) return
     setBusy(true)
@@ -150,6 +172,7 @@ export default function Sim() {
             <th>Avg turns</th>
             <th>Games</th>
             <th>Requested</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -172,11 +195,23 @@ export default function Sim() {
                 {r.games} · {r.policy}
               </td>
               <td className="muted">{when(r.requested_at)}</td>
+              <td>
+                {r.status === 'complete' && (
+                  <button
+                    className="secondary"
+                    title="Re-run these exact seeds against the deck as it is now — identical shuffles, so the difference is your edit, not variance"
+                    onClick={() => rerunPaired(r)}
+                    disabled={busy}
+                  >
+                    Re-run paired
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={9} className="muted">
+              <td colSpan={10} className="muted">
                 No simulations yet.
               </td>
             </tr>
@@ -217,12 +252,53 @@ export default function Sim() {
           </div>
         ))}
 
+      <PairedDeltas runs={runs} />
+
       {runs
         .filter((r) => r.status === 'complete' && r.analysis)
         .slice(0, 2)
         .map((r) => (
           <Analysis key={r.id} run={r} analysis={r.analysis!} />
         ))}
+    </div>
+  )
+}
+
+function PairedDeltas({ runs }: { runs: SimRun[] }) {
+  // Group completed runs by (deck, opponent, seed_base): same seeds =
+  // same shuffles, so comparing them isolates the decklist change.
+  const groups = new Map<string, SimRun[]>()
+  for (const r of runs) {
+    if (r.status !== 'complete' || r.seed_base == null) continue
+    const k = `${r.deck_id}|${r.opponent}|${r.seed_base}|${r.games}|${r.policy}`
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  const pairs = [...groups.values()].filter((g) => g.length > 1).slice(0, 3)
+  if (!pairs.length) return null
+  return (
+    <div className="panel" style={{ marginTop: '1rem' }}>
+      <h4 style={{ marginTop: 0 }}>Paired comparisons</h4>
+      <p className="muted">
+        Same seeds, same opponent, same pilot — identical shuffles and opening hands on both
+        sides, so the difference is your decklist change rather than variance.
+      </p>
+      {pairs.map((g) => {
+        const ordered = [...g].sort((x, y) => x.id - y.id)
+        const first = ordered[0]
+        const last = ordered[ordered.length - 1]
+        const delta = Number(last.win_rate) - Number(first.win_rate)
+        return (
+          <p key={first.id} style={{ margin: '0.35rem 0' }}>
+            <strong>{first.deck_name}</strong> vs {first.opponent_label ?? first.opponent}:{' '}
+            run #{first.id} {pct(first.win_rate)} → #{last.id} {pct(last.win_rate)}{' '}
+            <strong style={{ color: delta >= 0 ? 'var(--good, #2e7d32)' : 'var(--bad, #c62828)' }}>
+              {delta >= 0 ? '+' : ''}
+              {(delta * 100).toFixed(1)} pts
+            </strong>{' '}
+            <span className="muted">over {first.games} paired games</span>
+          </p>
+        )
+      })}
     </div>
   )
 }

@@ -12,11 +12,13 @@ CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_le
   COALESCE(col.qty_normal, 0) AS qty_normal, COALESCE(col.qty_foil, 0) AS qty_foil,
   COALESCE((SELECT sum(dc.qty) FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
             WHERE dc.card_id = c.id AND d.in_use
-              AND d.format = 'constructed'), 0) AS qty_in_use"""
+              AND d.format = 'constructed'), 0) AS qty_in_use,
+  (ec.card_id IS NOT NULL) AS sim_playable"""
 
 CARD_FROM = """FROM cards c
   JOIN sets s ON s.id = c.set_id
-  LEFT JOIN collection col ON col.card_id = c.id"""
+  LEFT JOIN collection col ON col.card_id = c.id
+  LEFT JOIN engine_coverage ec ON ec.card_id = c.id"""
 
 
 @router.get("/sets")
@@ -37,6 +39,7 @@ def search_cards(
     rarity: str = "",
     type: str = "",
     owned: str = Query("all", pattern="^(all|owned|missing)$"),
+    sim: str = Query("all", pattern="^(all|playable|unplayable)$"),
     core: bool = False,
     sort: str = Query("name", pattern="^(set|name|cost|price)$"),
     page: int = Query(1, ge=1),
@@ -60,6 +63,10 @@ def search_cards(
         params.append(type)
     if core:
         where.append("s.core_legal")
+    if sim == "playable":
+        where.append("ec.card_id IS NOT NULL")
+    elif sim == "unplayable":
+        where.append("ec.card_id IS NULL")
     if owned == "owned":
         where.append("COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) > 0")
     elif owned == "missing":

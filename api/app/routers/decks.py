@@ -83,6 +83,7 @@ def _deck_row(deck_id: int) -> dict:
         """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type, c.price_usd,
                   c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
                   s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
+                  (ec.card_id IS NOT NULL) AS sim_playable,
                   COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                             JOIN decks d2 ON d2.id = dc2.deck_id
@@ -93,6 +94,7 @@ def _deck_row(deck_id: int) -> dict:
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = dc.card_id
+           LEFT JOIN engine_coverage ec ON ec.card_id = dc.card_id
            WHERE dc.deck_id = %s
            ORDER BY c.cost NULLS LAST, c.full_name""",
         (deck_id,),

@@ -97,7 +97,43 @@ export default function DeckDetail() {
   const [searchFree, setSearchFree] = useState(false)
   const [poolText, setPoolText] = useState('')
   const [poolMsg, setPoolMsg] = useState('')
+  const [sortKey, setSortKey] = useState('')
+  const [sortDir, setSortDir] = useState(1)
   const [error, setError] = useState('')
+
+  const clickSort = (key: string) => {
+    if (sortKey === key) setSortDir(-sortDir)
+    else { setSortKey(key); setSortDir(1) }
+  }
+
+  const SortTh = ({ k, label }: { k: string; label: string }) => (
+    <th onClick={() => clickSort(k)} style={{ cursor: 'pointer', userSelect: 'none' }}
+      title="Click to sort">
+      {label}{sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : ''}
+    </th>
+  )
+
+  const sortedCards = (cards: DeckCardRow[]): DeckCardRow[] => {
+    if (!sortKey) return cards
+    const val = (c: DeckCardRow): string | number => {
+      switch (sortKey) {
+        case 'qty': return c.qty
+        case 'name': return c.full_name.toLowerCase()
+        case 'cost': return c.cost ?? -1
+        case 'type': return (c.type ?? []).join(' ')
+        case 'owned': return c.owned
+        case 'free': return c.free
+        case 'in_pool': return c.in_pool ?? 0
+        default: return 0
+      }
+    }
+    return [...cards].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb : String(va).localeCompare(String(vb))
+      return sortDir * (cmp || a.full_name.localeCompare(b.full_name))
+    })
+  }
 
   const load = () => {
     get<Deck>(`/decks/${id}`).then(setDeck).catch((e) => setError(String(e)))
@@ -406,13 +442,13 @@ export default function DeckDetail() {
       <table>
         <thead>
           {deck.sim_only
-            ? <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th></th></tr>
+            ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><th></th></tr>
             : deck.format === 'sealed'
-              ? <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>In pool</th><th></th></tr>
-              : <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>Owned</th><th>Free</th><th></th></tr>}
+              ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><SortTh k="in_pool" label="In pool" /><th></th></tr>
+              : <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><SortTh k="owned" label="Owned" /><SortTh k="free" label="Free" /><th></th></tr>}
         </thead>
         <tbody>
-          {deck.cards?.map((c) => (
+          {sortedCards(deck.cards ?? []).map((c) => (
             <tr key={c.card_id} className={
               deck.sim_only ? ''
                 : deck.format === 'sealed'

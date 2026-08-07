@@ -283,6 +283,7 @@ export interface SimRun {
   error: string | null
   unsupported_cards: { full_name: string; qty?: number; reason: string }[] | null
   analyze_requested: boolean
+  seed_base_shared?: boolean
   analysis: SimAnalysis | null
 }
 

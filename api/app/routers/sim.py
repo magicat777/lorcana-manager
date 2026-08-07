@@ -83,6 +83,10 @@ class SimRequestIn(BaseModel):
     policy: str = "heuristic"
     requested_by: str = "api"
     analyze: bool = False       # also run the teacher pass over the result
+    # Reuse another run's seeds: the two decks then face IDENTICAL
+    # shuffles and opening hands, so the difference between them is the
+    # decklist change and not the luck. Set by "compare to this run".
+    seed_base: int | None = None
 
 
 class ClaimIn(BaseModel):
@@ -126,9 +130,10 @@ def queue_sim(deck_id: int, body: SimRequestIn):
             raise HTTPException(404, "no such opponent deck")
     return db.query_one(
         f"""INSERT INTO sim_deck_runs
-              (deck_id, opponent, games, policy, requested_by, analyze_requested)
-            VALUES (%s,%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
-        (deck_id, body.opponent, body.games, body.policy, body.requested_by, body.analyze))
+              (deck_id, opponent, games, policy, requested_by, analyze_requested, seed_base)
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
+        (deck_id, body.opponent, body.games, body.policy, body.requested_by,
+         body.analyze, body.seed_base))
 
 
 @router.get("/sim/runs")
@@ -141,6 +146,30 @@ def list_runs(deck_id: int | None = None, limit: int = 25):
             FROM sim_deck_runs {where}
             ORDER BY requested_at DESC LIMIT %s""",
         [*params, min(limit, 100)])
+
+
+@router.get("/sim/compare")
+def compare(a: int, b: int):
+    """Two finished runs side by side. When they share a seed_base,
+    opponent, games and policy, the comparison is PAIRED — identical
+    shuffles for both decklists — so a small delta is still real; a
+    delta between unpaired runs is mostly noise and is flagged."""
+    rows = db.query(f"SELECT {RUN_COLS} FROM sim_deck_runs WHERE id = ANY(%s)", ([a, b],))
+    by_id = {r["id"]: r for r in rows}
+    if a not in by_id or b not in by_id:
+        raise HTTPException(404, "no such run")
+    ra, rb = by_id[a], by_id[b]
+    paired = (
+        ra["seed_base"] is not None
+        and ra["seed_base"] == rb["seed_base"]
+        and ra["opponent"] == rb["opponent"]
+        and ra["games"] == rb["games"]
+        and ra["policy"] == rb["policy"]
+    )
+    delta = None
+    if ra["win_rate"] is not None and rb["win_rate"] is not None:
+        delta = float(rb["win_rate"]) - float(ra["win_rate"])
+    return {"a": ra, "b": rb, "paired": paired, "win_rate_delta": delta}
 
 
 @router.get("/sim/runs/{run_id}")
@@ -188,3 +217,42 @@ def post_result(run_id: int, body: SimResultIn):
     if not updated:
         raise HTTPException(404, "no such run")
     return updated
+
+
+# ---------------------------------------------------------------------------
+# Engine coverage (published by the engine; read by deck building)
+# ---------------------------------------------------------------------------
+
+
+class CoverageIn(BaseModel):
+    engine_build: str
+    covered: list[dict]        # [{set_code, collector_number}, ...]
+
+
+@router.post("/sim/coverage")
+def put_coverage(body: CoverageIn):
+    """Replace the coverage manifest. Full replacement, one
+    transaction: coverage only ever grows, but a card whose spec was
+    withdrawn must stop claiming to be playable."""
+    pairs = [(c.get("set_code"), c.get("collector_number")) for c in body.covered]
+    with db.pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM engine_coverage")
+            cur.executemany(
+                """INSERT INTO engine_coverage (card_id, engine_build)
+                   SELECT c.id, %s FROM cards c JOIN sets s ON s.id = c.set_id
+                   WHERE s.code = %s AND c.collector_number = %s
+                   ON CONFLICT (card_id) DO UPDATE SET engine_build = EXCLUDED.engine_build""",
+                [(body.engine_build, sc, num) for sc, num in pairs])
+            cur.execute("SELECT count(*) AS n FROM engine_coverage")
+            n = cur.fetchone()["n"]
+    return {"stored": n, "submitted": len(pairs), "engine_build": body.engine_build}
+
+
+@router.get("/sim/coverage")
+def get_coverage():
+    row = db.query_one(
+        """SELECT count(*) AS playable, max(engine_build) AS engine_build,
+                  max(updated_at) AS updated_at FROM engine_coverage""")
+    total = db.query_one("SELECT count(*) AS n FROM cards")["n"]
+    return {**row, "catalog": total}

@@ -583,9 +583,22 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   across flagged decks — on top of what built decks already allocate, so it's
   the true "make everything buildable simultaneously" shopping list — priced
   per card, biggest ticket first, with a copy-as-text button for the shop.
-- **Mark built / in use:** allocates the deck's copies. If other built decks
-  already claim some, you get a confirm dialog listing the shortfall and can
-  force it. Un-marking is never blocked.
+- **Mark built / in use:** allocates the deck's copies. If the missing copies
+  are sleeved in **other built decks**, the dialog lists those donor decks and
+  offers to **pull** — one click un-builds the donors (their recipes stay
+  intact; a cannibalized deck is honestly "not built") and builds this one.
+  That's the on-the-fly rebuild workflow: recipes never change, `in_use`
+  tracks physical reality. Force remains for true shortfalls, but the DB then
+  over-claims and the Decks page flags it. Un-marking is never blocked.
+- **Duplicate as version:** clones the list/notes as a new unbuilt deck
+  (auto-suggests "… v5"), so a rebuild preserves the old version's recipe and
+  its match-log references.
+- **History:** every deck page shows its lifecycle (`deck_events`, mig 015) —
+  created/cloned/built/un-built, with reasons like "copies pulled for
+  'Ruby/Steel v4'". Answers "where did my cards go" weeks later.
+- **Over-allocation banner:** the Decks page (and a brief warning line) flags
+  any card claimed by built decks beyond owned copies — the safety net for
+  force-builds and unscanned precon cards (`GET /allocation-conflicts`).
 - **Export / print** (`/decks/{id}/export`): printable tournament sheet
   (player/event/date blanks), Core Constructed legality verdict (our
   `sets.core_legal` truth, with per-card violations), full card table,
@@ -686,7 +699,9 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `POST /decks/{id}/pool/import` | Add/replace a sealed deck's pool from a text list. |
 | `DELETE /decks/{id}/pool/{card_id}` | Remove a card from a sealed pool. |
 | `GET /decks/{id}/export` | Text list + composition + Core legality. |
-| `PUT /decks/{id}/in_use` | Toggle allocation; 409 with shortfall unless `force`. |
+| `PUT /decks/{id}/in_use` | Toggle allocation; 409 lists donor decks + `after_pull_missing`; `pull_from_decks=true` un-builds donors, `force=true` overrides. |
+| `POST /decks/{id}/clone` | Duplicate as a new unbuilt version. |
+| `GET /allocation-conflicts` | Cards claimed by built decks beyond owned copies. |
 | `GET/POST /events`, `GET/PUT/DELETE /events/{id}` | Event CRUD; PUT is the post-event partial update (replaces event-level observations when given). |
 | `POST /events/{id}/matches` | Log a round (unique per round; `overwrite` replaces). |
 | `DELETE /matches/{id}` | Delete a round. |

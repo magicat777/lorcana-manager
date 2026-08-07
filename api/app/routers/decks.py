@@ -321,7 +321,9 @@ def _buildable(deck: dict) -> dict:
             "need": c["qty"], "have": c["owned"],
             "allocated_elsewhere": c["allocated_elsewhere"], "free": c["free"],
             "missing": max(0, c["qty"] - c["free"]),
-            "price_usd": c.get("price_usd"),
+            # float, not Decimal: this dict also rides in 409 details, which
+            # starlette serializes with plain json.dumps
+            "price_usd": float(c["price_usd"]) if c.get("price_usd") is not None else None,
         }
         for c in deck["cards"]
     ]

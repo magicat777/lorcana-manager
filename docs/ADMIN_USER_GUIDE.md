@@ -359,6 +359,15 @@ refetches update text in place, `first_seen_at` is set once.
   `SOURCES` in the same file.
 - Manual run: `kubectl -n lorcana create job --from=cronjob/lorcana-news-fetch news-manual`.
 
+**Enrichment (mig 014):** items whose title/summary matches rotation, banlist,
+errata, or release-notes keywords get `signal='rules'` and their article body
+fetched once (capped 12k chars, stored in `news_items.body`). The job also
+diffs Lorcast's set list against ours — an unknown set becomes a synthetic
+`signal='new-set'` item saying "run the seed job" (keyword-free, so a new-set
+announcement is never missed). Signal items lead the news list for 7 days,
+carry ⚠ RULES / ⚠ NEW SET badges on the web brief, and get a ⚠ prefix in the
+ntfy push.
+
 ### 6.3 CronJob: `lorcana-daily-brief` — 15:00 UTC (8:00 PDT / 7:00 PST)
 
 Runs `python -m app.jobs.daily_brief`: builds the brief (tonight's league from

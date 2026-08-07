@@ -95,10 +95,11 @@ def build_brief() -> dict:
             pass
 
     news = db.query(
-        """SELECT title, url, category, summary, published_at,
+        """SELECT title, url, category, summary, published_at, signal,
                   (first_seen_at > now() - interval '36 hours') AS is_new
            FROM news_items
-           ORDER BY published_at DESC NULLS LAST, id DESC LIMIT 8""")
+           ORDER BY (signal IS NOT NULL AND first_seen_at > now() - interval '7 days') DESC,
+                    published_at DESC NULLS LAST, id DESC LIMIT 8""")
 
     totals = db.query_one(
         """SELECT count(*) FILTER (WHERE col.qty_normal + col.qty_foil > 0) AS unique_owned,
@@ -139,10 +140,12 @@ def render_text(b: dict) -> str:
     if rot and 0 <= rot["days"] <= 90:
         lines.append(f"⚠ Core rotation in {rot['days']}d ({rot['date']}) — "
                      f"Core is currently sets {rot['core_sets']}; recheck deck legality.")
-    fresh = [n for n in b.get("news", []) if n["is_new"]]
+    fresh = sorted([n for n in b.get("news", []) if n["is_new"]],
+                   key=lambda n: n.get("signal") is None)
     if fresh:
         lines.append("Official news: "
-                     + "; ".join(f"{n['title']} [{n['category']}]" for n in fresh[:5]))
+                     + "; ".join(("⚠ " if n.get("signal") else "") + f"{n['title']} [{n['category']}]"
+                                 for n in fresh[:5]))
     le = b["last_event"]
     if le:
         lines.append(f"Last event: {le['date']} {le['store']} — went {le['final_record'] or '?'}"

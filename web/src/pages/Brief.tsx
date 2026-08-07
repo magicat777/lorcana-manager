@@ -14,7 +14,7 @@ interface BriefData {
   rotation: { date: string; days: number; core_sets: string } | null
   news: {
     title: string; url: string; category: string | null; summary: string | null
-    published_at: string | null; is_new: boolean
+    published_at: string | null; is_new: boolean; signal: string | null
   }[]
   meta_last5: { ink_pair: string; times_faced: number; losses_to: number }[]
   deck_watch: { value: string; mentions: number }[]
@@ -73,6 +73,12 @@ export default function Brief() {
           {b.news.map((n) => (
             <p key={n.url} style={{ margin: '0.35rem 0' }}>
               {n.is_new && <span className="ok" style={{ fontWeight: 600 }}>NEW </span>}
+              {n.signal && (
+                <span className="error" style={{ fontWeight: 600 }}
+                  title={n.signal === 'new-set' ? 'New set — run the seed job' : 'Rules-relevant article'}>
+                  ⚠ {n.signal === 'new-set' ? 'NEW SET' : 'RULES'}{' '}
+                </span>
+              )}
               <a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>
               <span className="muted">
                 {' '}— {n.category}{n.published_at ? `, ${n.published_at}` : ''}

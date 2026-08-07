@@ -501,8 +501,17 @@ Matches · Brief · Upload**.
 **Install on your phone**: open the site in Safari/Chrome and *Add to Home
 Screen* — it installs as a standalone app (gold ◈ icon, dark theme). The UI is
 touch-optimized: the match-log toggles get bigger tap targets on touch screens
-and tables scroll horizontally. LAN-only until remote access (roadmap #8) is
-set up.
+and tables scroll horizontally.
+
+**Off-network access** runs through a Cloudflare Tunnel (the existing swrpg
+`cloudflared` reaches `lorcana-web.lorcana.svc:80` cross-namespace — nothing
+lorcana-side to deploy) with a **Cloudflare Access** self-hosted app in front
+(email OTP allow-list) plus JWT enforcement on the tunnel route. The public
+hostname deliberately lives only in the `lorcana-db` secret as
+`LORCANA_WEB_URL` (never in this public repo); the brief's ntfy tap-through
+links use it. LAN NodePort 30710 stays as-is — no auth friction at home, and
+odin-mcp/CronJobs never leave the cluster. Reinstall the PWA from the public
+URL to use it at venues.
 
 ### 9.1 Cards (`/`)
 

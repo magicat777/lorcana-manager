@@ -73,7 +73,7 @@ export default function DeckExport() {
 
       <h1 style={{ marginBottom: 0 }}>Deck List — {d.name}</h1>
       <p className="muted">
-        {d.card_total} cards · {Object.keys(c.ink_counts).join(' / ')} ·
+        {d.card_total} cards · {[...new Set(Object.keys(c.ink_counts).flatMap((k) => k.split('/')))].join(' / ')} ·
         {' '}{c.inkable} inkable / {c.uninkable} uninkable · avg cost {c.avg_cost}
       </p>
 

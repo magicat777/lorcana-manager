@@ -19,8 +19,8 @@ function Composition({ cards }: { cards: DeckCardRow[] }) {
   for (const c of cards) {
     const bucket = (c.cost ?? 0) >= 9 ? '9+' : String(c.cost ?? 0)
     curve[bucket] = (curve[bucket] ?? 0) + c.qty
-    for (const i of (c.inks?.length ? c.inks : c.ink ? [c.ink] : []))
-      inkCounts[i] = (inkCounts[i] ?? 0) + c.qty
+    const combo = (c.inks?.length ? c.inks : c.ink ? [c.ink] : []).join('/')
+    if (combo) inkCounts[combo] = (inkCounts[combo] ?? 0) + c.qty
     const t = c.type ?? []
     const primary = t.includes('Song') ? 'Song'
       : (['Character', 'Action', 'Item', 'Location'].find((k) => t.includes(k)) ?? 'Other')
@@ -48,9 +48,12 @@ function Composition({ cards }: { cards: DeckCardRow[] }) {
       <div style={{ fontSize: '0.88rem' }}>
         <p className="muted" style={{ margin: '0 0 0.3rem' }}>Composition</p>
         <p style={{ margin: '0.15rem 0' }}>
-          {Object.entries(inkCounts).map(([i, n]) => (
-            <span key={i} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
-              <span className="inkdot" style={{ background: INK_COLORS[i] }} />{i} {n}
+          {Object.entries(inkCounts).map(([combo, n]) => (
+            <span key={combo} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
+              {combo.split('/').map((i) => (
+                <span key={i} className="inkdot" style={{ background: INK_COLORS[i] }} />
+              ))}
+              {combo} {n}
             </span>
           ))}
         </p>
@@ -248,6 +251,7 @@ export default function DeckDetail() {
         <h1>
           {deck.name} <span className="muted">({deck.card_total} cards)</span>
           {deck.format === 'sealed' && <span className="badge" style={{ marginLeft: 10, verticalAlign: 'middle' }}>SEALED</span>}
+          {deck.sim_only && <span className="badge" style={{ marginLeft: 10, verticalAlign: 'middle' }} title="Opponent deck for simulations — not owned">SIM-ONLY</span>}
           {deck.in_use && <span className="badge foil" style={{ marginLeft: 10, verticalAlign: 'middle' }}>◈ BUILT / IN USE</span>}
         </h1>
         <span>
@@ -261,10 +265,24 @@ export default function DeckDetail() {
           <Link to={`/sim?deck=${deck.id}`} style={{ marginRight: 8 }}>
             <button className="secondary">Simulate</button>
           </Link>
-          <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
-            {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
+          {!deck.sim_only && (
+            <button className={deck.in_use ? 'secondary' : ''} onClick={() => toggleInUse()} style={{ marginRight: 8 }}>
+              {deck.in_use ? 'Mark not in use' : 'Mark built / in use'}
+            </button>
+          )}
+          <button className="secondary" style={{ marginRight: 8 }}
+            title="Sim-only decks are opponents for simulations — no ownership checks"
+            onClick={async () => {
+              await send('PUT', `/decks/${deck.id}`, {
+                name: deck.name, notes: deck.notes ?? '',
+                cards: (deck.cards ?? []).map((c) => ({ card_id: c.card_id, qty: c.qty })),
+                source: 'webui', sim_only: !deck.sim_only,
+              })
+              load()
+            }}>
+            {deck.sim_only ? 'SIM ✓ (make mine)' : 'Mark sim-only'}
           </button>
-          {deck.format !== 'sealed' && !deck.in_use && (
+          {!deck.sim_only && deck.format !== 'sealed' && !deck.in_use && (
             <button className="secondary" style={{ marginRight: 8 }}
               onClick={async () => { await send('PUT', `/decks/${deck.id}/wanted`, { wanted: !deck.wanted }); load() }}>
               {deck.wanted ? '★ On want list' : '☆ Add to want list'}
@@ -273,7 +291,10 @@ export default function DeckDetail() {
           <button className="danger" onClick={remove}>Delete deck</button>
         </span>
       </div>
-      {buildable && buildable.format === 'sealed' && (
+      {deck.sim_only && (
+        <p className="muted">Sim-only opponent deck — ownership and buildability aren't checked.</p>
+      )}
+      {!deck.sim_only && buildable && buildable.format === 'sealed' && (
         buildable.note
           ? <p className="muted">{buildable.note}</p>
           : <p className={buildable.buildable ? 'ok' : 'error'}>
@@ -282,7 +303,7 @@ export default function DeckDetail() {
                 : `✘ ${buildable.missing_total} card(s) in the deck aren't in your pool — fix the deck or add the missing pulls to the pool.`}
             </p>
       )}
-      {buildable && buildable.format !== 'sealed' && (
+      {!deck.sim_only && buildable && buildable.format !== 'sealed' && (
         <p className={buildable.buildable ? 'ok' : 'error'}>
           {buildable.buildable
             ? '✔ Buildable from free copies (not allocated to other built decks).'
@@ -384,16 +405,19 @@ export default function DeckDetail() {
 
       <table>
         <thead>
-          {deck.format === 'sealed'
-            ? <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>In pool</th><th></th></tr>
-            : <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>Owned</th><th>Free</th><th></th></tr>}
+          {deck.sim_only
+            ? <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th></th></tr>
+            : deck.format === 'sealed'
+              ? <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>In pool</th><th></th></tr>
+              : <tr><th>Qty</th><th>Card</th><th>Cost</th><th>Type</th><th>Owned</th><th>Free</th><th></th></tr>}
         </thead>
         <tbody>
           {deck.cards?.map((c) => (
             <tr key={c.card_id} className={
-              deck.format === 'sealed'
-                ? ((deck.pool_total ?? 0) > 0 && (c.in_pool ?? 0) < c.qty ? 'bad' : '')
-                : (c.free < c.qty ? 'bad' : '')
+              deck.sim_only ? ''
+                : deck.format === 'sealed'
+                  ? ((deck.pool_total ?? 0) > 0 && (c.in_pool ?? 0) < c.qty ? 'bad' : '')
+                  : (c.free < c.qty ? 'bad' : '')
             }>
               <td>
                 <button className="secondary" onClick={() => setQty(c.card_id, c.qty - 1)}>−</button>{' '}
@@ -407,7 +431,7 @@ export default function DeckDetail() {
               </td>
               <td>{c.cost ?? '—'}</td>
               <td className="muted">{c.type?.join(' · ')}</td>
-              {deck.format === 'sealed' ? (
+              {deck.sim_only ? null : deck.format === 'sealed' ? (
                 <td>{c.in_pool ?? 0}</td>
               ) : (
                 <>

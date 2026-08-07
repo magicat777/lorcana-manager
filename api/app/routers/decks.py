@@ -18,6 +18,7 @@ class DeckIn(BaseModel):
     cards: list[DeckCard] = []
     source: str = "api"       # provenance: who wrote this ('mcp', 'webui', 'api')
     format: str | None = None  # 'constructed' | 'sealed'; None = keep/default
+    sim_only: bool | None = None  # opponent deck for simulations only
 
 
 class DeckImportIn(BaseModel):
@@ -28,6 +29,7 @@ class DeckImportIn(BaseModel):
     source: str = "api"
     strict: bool = False      # refuse the write if validation warnings exist
     format: str | None = None
+    sim_only: bool | None = None
 
 
 def _check_format(fmt: str | None) -> None:
@@ -133,7 +135,7 @@ def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
 @router.get("/decks")
 def list_decks():
     return db.query(
-        """SELECT d.id, d.name, d.notes, d.in_use, d.format, d.updated_at,
+        """SELECT d.id, d.name, d.notes, d.in_use, d.format, d.sim_only, d.updated_at,
                   COALESCE(sum(dc.qty), 0) AS card_total
            FROM decks d LEFT JOIN deck_cards dc ON dc.deck_id = d.id
            GROUP BY d.id ORDER BY d.in_use DESC, d.name"""
@@ -147,9 +149,10 @@ def create_deck(body: DeckIn):
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO decks (name, notes, created_source, format)"
-                    " VALUES (%s,%s,%s,%s) RETURNING id",
-                    (body.name, body.notes, body.source, body.format or "constructed"),
+                    "INSERT INTO decks (name, notes, created_source, format, sim_only)"
+                    " VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source, body.format or "constructed",
+                     bool(body.sim_only)),
                 )
             except Exception:
                 raise HTTPException(409, f"deck {body.name!r} already exists")
@@ -211,14 +214,16 @@ def import_deck(body: DeckImportIn):
                 deck_id = existing["id"]
                 cur.execute(
                     "UPDATE decks SET notes=%s, updated_at=now(), updated_source=%s,"
-                    " format=COALESCE(%s, format) WHERE id=%s",
-                    (body.notes, body.source, body.format, deck_id),
+                    " format=COALESCE(%s, format), sim_only=COALESCE(%s, sim_only)"
+                    " WHERE id=%s",
+                    (body.notes, body.source, body.format, body.sim_only, deck_id),
                 )
             else:
                 cur.execute(
-                    "INSERT INTO decks (name, notes, created_source, format)"
-                    " VALUES (%s,%s,%s,%s) RETURNING id",
-                    (body.name, body.notes, body.source, body.format or "constructed"),
+                    "INSERT INTO decks (name, notes, created_source, format, sim_only)"
+                    " VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                    (body.name, body.notes, body.source, body.format or "constructed",
+                     bool(body.sim_only)),
                 )
                 deck_id = cur.fetchone()["id"]
         _write_cards(conn, deck_id, [DeckCard(**c) for c in matched])
@@ -246,8 +251,8 @@ def update_deck(deck_id: int, body: DeckIn):
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE decks SET name=%s, notes=%s, updated_at=now(), updated_source=%s,"
-                " format=COALESCE(%s, format) WHERE id=%s",
-                (body.name, body.notes, body.source, body.format, deck_id),
+                " format=COALESCE(%s, format), sim_only=COALESCE(%s, sim_only) WHERE id=%s",
+                (body.name, body.notes, body.source, body.format, body.sim_only, deck_id),
             )
         _write_cards(conn, deck_id, body.cards)
         conn.commit()
@@ -294,7 +299,15 @@ def _buildable(deck: dict) -> dict:
     """Constructed: validate against FREE copies — owned minus copies allocated
     to OTHER in_use constructed decks ('have' stays raw owned for reference).
     Sealed: validate against the deck's own pool (packs opened), never the
-    collection; an empty pool means untracked, not unbuildable."""
+    collection; an empty pool means untracked, not unbuildable.
+    Sim-only: ownership is irrelevant — always "buildable" with a note."""
+    if deck.get("sim_only"):
+        return {
+            "deck_id": deck["id"], "name": deck["name"], "in_use": deck["in_use"],
+            "format": deck["format"], "sim_only": True,
+            "buildable": True, "cards": [], "missing": [], "missing_total": 0,
+            "note": "sim-only deck — ownership not checked",
+        }
     if deck["format"] == "sealed":
         cards = [
             {
@@ -420,8 +433,11 @@ def export_deck(deck_id: int):
         type_counts[primary_type(c)] = type_counts.get(primary_type(c), 0) + c["qty"]
         bucket = "9+" if (c["cost"] or 0) >= 9 else str(c["cost"] or 0)
         curve[bucket] = curve.get(bucket, 0) + c["qty"]
-        for ink in (c.get("inks") or ([c["ink"]] if c.get("ink") else [])):
-            ink_counts[ink] = ink_counts.get(ink, 0) + c["qty"]
+        # One bucket per ink COMBO (dual-ink cards get their own "A/B" bucket)
+        # so the counts sum to the deck total instead of double-counting duals.
+        combo = "/".join(c.get("inks") or ([c["ink"]] if c.get("ink") else []))
+        if combo:
+            ink_counts[combo] = ink_counts.get(combo, 0) + c["qty"]
         if c.get("inkwell"):
             inkable += c["qty"]
         if c.get("lore"):
@@ -470,6 +486,9 @@ class WantedIn(BaseModel):
 
 @router.put("/decks/{deck_id}/wanted")
 def set_wanted(deck_id: int, body: WantedIn):
+    if body.wanted and db.query_one(
+            "SELECT 1 FROM decks WHERE id=%s AND sim_only", (deck_id,)):
+        raise HTTPException(422, "sim-only decks can't join the want list")
     if db.execute("UPDATE decks SET wanted=%s, updated_at=now() WHERE id=%s",
                   (body.wanted, deck_id)) == 0:
         raise HTTPException(404, "no such deck")
@@ -493,7 +512,7 @@ def wantlist():
                               AND d2.format = 'constructed'), 0) AS allocated
            FROM deck_cards dc
            JOIN decks d ON d.id = dc.deck_id
-             AND d.wanted AND NOT d.in_use AND d.format = 'constructed'
+             AND d.wanted AND NOT d.in_use AND NOT d.sim_only AND d.format = 'constructed'
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
@@ -510,7 +529,7 @@ def wantlist():
     cards.sort(key=lambda c: (-(c["line_cost"] or 0), c["full_name"]))
     wanted_decks = db.query(
         """SELECT id, name FROM decks
-           WHERE wanted AND NOT in_use AND format='constructed' ORDER BY name""")
+           WHERE wanted AND NOT in_use AND NOT sim_only AND format='constructed' ORDER BY name""")
     return {
         "wanted_decks": wanted_decks,
         "cards": cards,
@@ -526,6 +545,8 @@ def wantlist():
 @router.put("/decks/{deck_id}/in_use")
 def set_in_use(deck_id: int, body: InUseIn):
     deck = _deck_row(deck_id)
+    if deck.get("sim_only") and body.in_use:
+        raise HTTPException(422, "sim-only decks can't be marked built — they aren't owned")
     donors_pulled: list[dict] = []
     if body.in_use and not deck["in_use"] and not body.force:
         b = _buildable(deck)
@@ -606,9 +627,9 @@ def clone_deck(deck_id: int, body: CloneIn):
         with conn.cursor() as cur:
             try:
                 cur.execute(
-                    "INSERT INTO decks (name, notes, created_source, format)"
-                    " VALUES (%s,%s,%s,%s) RETURNING id",
-                    (body.name, src["notes"], body.source, src["format"]))
+                    "INSERT INTO decks (name, notes, created_source, format, sim_only)"
+                    " VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                    (body.name, src["notes"], body.source, src["format"], src["sim_only"]))
             except Exception:
                 raise HTTPException(409, f"deck {body.name!r} already exists")
             new_id = cur.fetchone()["id"]

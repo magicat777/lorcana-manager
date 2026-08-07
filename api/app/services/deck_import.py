@@ -19,14 +19,20 @@ def parse_deck_text(text: str) -> tuple[list[tuple[int, str]], list[str]]:
 
 
 def match_deck_entries(cur, entries: list[tuple[int, str]]) -> tuple[list[dict], list[dict]]:
-    """Match names to prints. Prefers a print the user owns, else the earliest release."""
+    """Match names to prints. Prefers a print the user owns, then a Core-legal
+    print, then the earliest release. (Core-legal before release date matters:
+    promo prints often predate the main-set print — 'The Horseman Strikes!'
+    P3 vs set 10 — and an unowned promo match falsely flags decks non-Core.)"""
     cards, unmatched = [], []
     for qty, name in entries:
         cur.execute(
             """SELECT c.id, c.full_name
-               FROM cards c LEFT JOIN collection col ON col.card_id = c.id
+               FROM cards c
+               JOIN sets s ON s.id = c.set_id
+               LEFT JOIN collection col ON col.card_id = c.id
                WHERE lower(c.full_name) = lower(%s)
                ORDER BY COALESCE(col.qty_normal + col.qty_foil, 0) DESC,
+                        s.core_legal DESC,
                         c.released_at ASC NULLS LAST, c.id
                LIMIT 1""",
             (name.strip(),),

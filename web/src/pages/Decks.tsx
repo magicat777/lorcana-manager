@@ -8,6 +8,7 @@ export default function Decks() {
   const [name, setName] = useState('')
   const [text, setText] = useState('')
   const [format, setFormat] = useState<'constructed' | 'sealed'>('constructed')
+  const [simOnly, setSimOnly] = useState(false)
   const [error, setError] = useState('')
   const nav = useNavigate()
 
@@ -21,7 +22,7 @@ export default function Decks() {
   const createEmpty = async () => {
     if (!name.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [], source: 'webui', format })
+      const d = await send<Deck>('POST', '/decks', { name: name.trim(), notes: '', cards: [], source: 'webui', format, sim_only: simOnly })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))
@@ -31,7 +32,7 @@ export default function Decks() {
   const importDeck = async () => {
     if (!name.trim() || !text.trim()) return
     try {
-      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text, source: 'webui', format })
+      const d = await send<Deck>('POST', '/decks/import', { name: name.trim(), text, source: 'webui', format, sim_only: simOnly })
       nav(`/decks/${d.id}`)
     } catch (e) {
       setError(String(e))
@@ -70,6 +71,7 @@ export default function Decks() {
             <h3 style={{ margin: 0 }}>
               {d.name}
               {d.format === 'sealed' && <span className="badge" style={{ marginLeft: 8 }}>SEALED</span>}
+              {d.sim_only && <span className="badge" style={{ marginLeft: 8 }} title="Opponent deck for simulations — not owned">SIM</span>}
               {d.in_use && <span className="badge foil" style={{ marginLeft: 8 }}>◈ built</span>}
               {d.wanted && !d.in_use && <span className="badge" style={{ marginLeft: 8 }}>★ want</span>}
             </h3>
@@ -91,6 +93,10 @@ export default function Decks() {
             <option value="sealed">Sealed / limited (40+ from pool)</option>
           </select>
           {'  '}
+          <label className="muted" style={{ cursor: 'pointer', marginRight: 8 }}>
+            <input type="checkbox" checked={simOnly} onChange={(e) => setSimOnly(e.target.checked)} />
+            {' '}Sim-only (opponent deck, not owned)
+          </label>
           <button className="secondary" onClick={createEmpty} disabled={!name.trim()}>
             Create empty deck
           </button>

@@ -533,7 +533,8 @@ weekly price snapshot, hover any point for the value), **price movers** tables
 (owned-card gainers/losers with a 30/90-day toggle), plus a panel per set with
 completion % bar, playset progress (4+ copies), copy count, and set value.
 Card detail pages get weekly price sparklines (normal + foil) once a card has
-two snapshots.
+two snapshots. Deck composition counts dual-ink cards as their own "A/B"
+bucket so ink counts always sum to the deck total.
 
 ### 9.4 Upload (`/upload`)
 
@@ -557,7 +558,13 @@ legacy `Name, Normal, Foil, Set, Card Number`).
 ### 9.5 Decks (`/decks`, `/decks/{id}`)
 
 - **Create:** empty deck by name, or paste a Dreamborn text list
-  (`4 Elsa - Spirit of Winter` per line) and import. Pick the format at
+  (`4 Elsa - Spirit of Winter` per line) and import. Name matching prefers a
+  print you own, then a **Core-legal** print, then earliest release (promo
+  prints often predate the main set — without the Core preference an unowned
+  promo match falsely flags decks non-Core).
+- **Sim-only decks** (mig 016): check "Sim-only" when importing an opponent
+  netdeck to run simulations against — no ownership/buildable checks, can't be
+  built or want-listed, SIM badge everywhere. Toggle on the deck page. Pick the format at
   creation: **Constructed** (60 cards, ≤4 per name, ≤2 inks) or **Sealed /
   limited** (minimum 40 cards, no copy/ink limits — Lorcana limited rules).
 - **Sealed decks** get a SEALED badge and a **pool panel**: paste each week's
@@ -662,6 +669,7 @@ be dictated conversationally between rounds.
 | `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
 | `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list. |
+| `lorcana_sim_run` / `lorcana_sim_runs` / `lorcana_sim_result` | Queue engine simulations (vs baselines or a sim-only opponent deck), list runs, and fetch results incl. the teacher pass (turning points of a typical loss) — coaching raw material. |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Permanent delete (confirm with the user first). |

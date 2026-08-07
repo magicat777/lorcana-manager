@@ -145,6 +145,7 @@ export interface Deck {
   notes: string | null
   in_use: boolean
   wanted?: boolean
+  sim_only?: boolean
   format: 'constructed' | 'sealed'
   updated_at: string
   card_total: number

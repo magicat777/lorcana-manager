@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
-import type { Deck } from '../types'
+import type { AllocationConflict, Deck } from '../types'
 
 export default function Decks() {
   const [decks, setDecks] = useState<Deck[]>([])
@@ -11,8 +11,11 @@ export default function Decks() {
   const [error, setError] = useState('')
   const nav = useNavigate()
 
+  const [conflicts, setConflicts] = useState<AllocationConflict[]>([])
+
   useEffect(() => {
     get<Deck[]>('/decks').then(setDecks).catch((e) => setError(String(e)))
+    get<AllocationConflict[]>('/allocation-conflicts').then(setConflicts).catch(() => {})
   }, [])
 
   const createEmpty = async () => {
@@ -42,6 +45,25 @@ export default function Decks() {
         <Link to="/wantlist">Want list →</Link>
       </div>
       {error && <p className="error">{error}</p>}
+      {conflicts.length > 0 && (
+        <div className="panel" style={{ borderColor: 'var(--danger)' }}>
+          <p className="error" style={{ margin: 0 }}>
+            ⚠ Built decks claim more copies than you own — the database is out of
+            sync with your sleeves:
+          </p>
+          {conflicts.map((c) => (
+            <p key={c.card_id} style={{ margin: '0.25rem 0 0', fontSize: '0.88rem' }}>
+              <Link to={`/cards/${c.set_code}/${c.collector_number}`}>{c.full_name}</Link>
+              {' '}— {c.claimed} claimed / {c.owned} owned
+              <span className="muted"> ({c.decks.join('; ')})</span>
+            </p>
+          ))}
+          <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
+            Fix by un-building a deck, editing its list, or correcting collection counts
+            on the card page.
+          </p>
+        </div>
+      )}
       <div className="deckgrid">
         {decks.map((d) => (
           <Link key={d.id} to={`/decks/${d.id}`} className="panel" style={{ textDecoration: 'none', color: 'inherit' }}>

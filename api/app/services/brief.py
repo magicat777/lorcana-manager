@@ -101,6 +101,17 @@ def build_brief() -> dict:
            ORDER BY (signal IS NOT NULL AND first_seen_at > now() - interval '7 days') DESC,
                     published_at DESC NULLS LAST, id DESC LIMIT 8""")
 
+    conflicts = db.query(
+        """SELECT c.full_name, sum(dc.qty) AS claimed,
+                  COALESCE(col.qty_normal + col.qty_foil, 0) AS owned
+           FROM deck_cards dc
+           JOIN decks d ON d.id = dc.deck_id AND d.in_use AND d.format = 'constructed'
+           JOIN cards c ON c.id = dc.card_id
+           LEFT JOIN collection col ON col.card_id = c.id
+           GROUP BY c.id, c.full_name, col.qty_normal, col.qty_foil
+           HAVING sum(dc.qty) > COALESCE(col.qty_normal + col.qty_foil, 0)
+           ORDER BY c.full_name LIMIT 6""")
+
     totals = db.query_one(
         """SELECT count(*) FILTER (WHERE col.qty_normal + col.qty_foil > 0) AS unique_owned,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_copies,
@@ -119,6 +130,7 @@ def build_brief() -> dict:
         "meta_last5": meta,
         "sim_lab": sim_lab,
         "deck_watch": deck_watch,
+        "allocation_conflicts": conflicts,
         "price_movers": movers,
         "collection": totals,
     }
@@ -170,6 +182,11 @@ def render_text(b: dict) -> str:
     if b["deck_watch"]:
         lines.append("Deck watch — dead-card mentions: "
                      + ", ".join(f"{d['value']} x{d['mentions']}" for d in b["deck_watch"]))
+    if b.get("allocation_conflicts"):
+        lines.append("⚠ Built decks claim more copies than owned: "
+                     + "; ".join(f"{c['full_name']} ({c['claimed']} claimed, own {c['owned']})"
+                                 for c in b["allocation_conflicts"])
+                     + " — fix the decks or collection counts.")
     if b["price_movers"]:
         lines.append("Price movers (owned): "
                      + "; ".join(f"{m['full_name']} {'+' if m['delta'] >= 0 else ''}{m['delta']}"

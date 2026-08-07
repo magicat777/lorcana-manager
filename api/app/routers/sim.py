@@ -72,7 +72,7 @@ def latest():
 RUN_COLS = """id, deck_id, opponent, opponent_label, games, policy, seed_base,
   status, requested_by, requested_at, claimed_at, finished_at, worker,
   engine_build, wins, losses, win_rate, avg_turns, wins_as_p0, wins_as_p1,
-  elapsed_s, error, unsupported_cards"""
+  elapsed_s, error, unsupported_cards, analyze_requested, analysis"""
 
 POLICIES = ("heuristic", "random", "mcts16", "mcts32", "mcts64", "mcts128")
 
@@ -82,6 +82,7 @@ class SimRequestIn(BaseModel):
     games: int = Field(200, ge=10, le=5000)
     policy: str = "heuristic"
     requested_by: str = "api"
+    analyze: bool = False       # also run the teacher pass over the result
 
 
 class ClaimIn(BaseModel):
@@ -104,6 +105,7 @@ class SimResultIn(BaseModel):
     wins_as_p0: int | None = None
     wins_as_p1: int | None = None
     elapsed_s: float | None = None
+    analysis: dict | None = None
 
 
 @router.post("/decks/{deck_id}/sim", status_code=201)
@@ -123,9 +125,10 @@ def queue_sim(deck_id: int, body: SimRequestIn):
         if not db.query_one("SELECT 1 FROM decks WHERE id=%s", (int(body.opponent),)):
             raise HTTPException(404, "no such opponent deck")
     return db.query_one(
-        f"""INSERT INTO sim_deck_runs (deck_id, opponent, games, policy, requested_by)
-            VALUES (%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
-        (deck_id, body.opponent, body.games, body.policy, body.requested_by))
+        f"""INSERT INTO sim_deck_runs
+              (deck_id, opponent, games, policy, requested_by, analyze_requested)
+            VALUES (%s,%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
+        (deck_id, body.opponent, body.games, body.policy, body.requested_by, body.analyze))
 
 
 @router.get("/sim/runs")
@@ -173,13 +176,15 @@ def post_result(run_id: int, body: SimResultIn):
               opponent_label=COALESCE(%s, opponent_label),
               policy=COALESCE(%s, policy), engine_build=%s, seed_base=%s,
               games=COALESCE(%s, games), wins=%s, losses=%s, win_rate=%s,
-              avg_turns=%s, wins_as_p0=%s, wins_as_p1=%s, elapsed_s=%s
+              avg_turns=%s, wins_as_p0=%s, wins_as_p1=%s, elapsed_s=%s,
+              analysis=%s
             WHERE id=%s RETURNING {RUN_COLS}""",
         (body.status, body.error,
          _json.dumps(body.unsupported_cards) if body.unsupported_cards else None,
          body.opponent_label, body.policy, body.engine_build, body.seed_base,
          body.games, body.wins, body.losses, body.win_rate, body.avg_turns,
-         body.wins_as_p0, body.wins_as_p1, body.elapsed_s, run_id))
+         body.wins_as_p0, body.wins_as_p1, body.elapsed_s,
+         _json.dumps(body.analysis) if body.analysis else None, run_id))
     if not updated:
         raise HTTPException(404, "no such run")
     return updated

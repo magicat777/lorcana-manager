@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { get, send } from '../api'
-import type { Deck, SimRun } from '../types'
+import type { Deck, SimRun, SimAnalysis } from '../types'
 
 const POLICIES = ['heuristic', 'random', 'mcts16', 'mcts32', 'mcts64', 'mcts128']
 const PENDING = new Set(['queued', 'running'])
@@ -19,6 +19,7 @@ export default function Sim() {
   const [opponent, setOpponent] = useState('deck3')
   const [games, setGames] = useState(200)
   const [policy, setPolicy] = useState('heuristic')
+  const [analyze, setAnalyze] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const timer = useRef<number | undefined>(undefined)
@@ -57,6 +58,7 @@ export default function Sim() {
         opponent,
         games,
         policy,
+        analyze,
         requested_by: 'webui',
       })
       load()
@@ -125,6 +127,10 @@ export default function Sim() {
               </option>
             ))}
           </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={analyze} onChange={(e) => setAnalyze(e.target.checked)} />
+          Explain a loss
         </label>
         <button onClick={queue} disabled={!deckId || busy}>
           {busy ? 'Queueing…' : 'Run simulation'}
@@ -210,6 +216,79 @@ export default function Sim() {
             </table>
           </div>
         ))}
+
+      {runs
+        .filter((r) => r.status === 'complete' && r.analysis)
+        .slice(0, 2)
+        .map((r) => (
+          <Analysis key={r.id} run={r} analysis={r.analysis!} />
+        ))}
+    </div>
+  )
+}
+
+function Analysis({ run, analysis }: { run: SimRun; analysis: SimAnalysis }) {
+  const g = analysis.game
+  const s = analysis.shape
+  return (
+    <div className="panel" style={{ marginTop: '1rem' }}>
+      <h4 style={{ marginTop: 0 }}>
+        Why run #{run.id} lost games — {run.deck_name ?? `deck ${run.deck_id}`} vs{' '}
+        {run.opponent_label ?? run.opponent}
+      </h4>
+      <p className="muted">
+        Losses ran {num(s.avg_turns_in_losses)} turns on average vs {num(s.avg_turns_in_wins)} in
+        wins · {s.losses_on_the_play} lost on the play, {s.losses_on_the_draw} on the draw.
+      </p>
+      {analysis.note && <p className="muted">{analysis.note}</p>}
+      {analysis.error && <p className="error">analysis failed: {analysis.error}</p>}
+      {g && (
+        <>
+          <p style={{ marginBottom: '0.4rem' }}>
+            Typical loss (seed {g.seed}, {g.seat === 0 ? 'on the play' : 'on the draw'}): ended turn{' '}
+            {g.turns} at {g.final_lore.you}–{g.final_lore.opponent} lore.{' '}
+            <span className="muted">{g.decisions_scanned} decisions examined.</span>
+          </p>
+          {g.turning_points.length === 0 ? (
+            <p className="muted">
+              No clear misplays — the search agreed with every decision. This loss was about the
+              matchup or the draw, not the pilot.
+            </p>
+          ) : (
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>Turn</th>
+                  <th>Played</th>
+                  <th>Search preferred</th>
+                  <th title="win probability given up, per the search">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.turning_points.map((tp, i) => (
+                  <tr key={i}>
+                    <td>{tp.turn}</td>
+                    <td>{tp.played}</td>
+                    <td>{tp.search_prefers}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      −{(tp.winrate_gap * 100).toFixed(0)}%
+                      <span className="muted">
+                        {' '}
+                        ({(tp.played_winrate * 100).toFixed(0)}→{(tp.search_winrate * 100).toFixed(0)})
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="muted" style={{ marginTop: '0.5rem' }}>
+            Cost = win probability the played move gave up according to the search. The line shown is
+            the one the simulated pilot actually took; replay it with{' '}
+            <code>python -m lorcana_engine.teacher --seed {g.seed} --coach</code>.
+          </p>
+        </>
+      )}
     </div>
   )
 }

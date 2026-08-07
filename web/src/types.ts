@@ -155,6 +155,18 @@ export interface Deck {
   pool?: PoolRow[]
   pool_total?: number
   unmatched?: { qty: number | null; name: string; reason: string }[]
+  events?: { at: string; action: string; detail: string | null }[]
+  pulled_from?: string[]
+}
+
+export interface AllocationConflict {
+  card_id: string
+  full_name: string
+  set_code: string
+  collector_number: string
+  owned: number
+  claimed: number
+  decks: string[]
 }
 
 export interface Venue {
@@ -269,4 +281,39 @@ export interface SimRun {
   elapsed_s: string | number | null
   error: string | null
   unsupported_cards: { full_name: string; qty?: number; reason: string }[] | null
+  analyze_requested: boolean
+  analysis: SimAnalysis | null
+}
+
+export interface SimTurningPoint {
+  turn: number
+  decision: number
+  played: string
+  search_prefers: string
+  played_winrate: number
+  search_winrate: number
+  winrate_gap: number
+  options: number
+}
+
+export interface SimAnalysis {
+  shape: {
+    avg_turns_in_losses: number | null
+    avg_turns_in_wins: number | null
+    losses_on_the_play: number
+    losses_on_the_draw: number
+  }
+  note?: string
+  error?: string
+  game?: {
+    seed: number
+    seat: number
+    won: boolean
+    turns: number
+    final_lore: { you: number; opponent: number }
+    decisions_scanned: number
+    turning_points: SimTurningPoint[]
+    lore_trace: { turn: number; you: number; opponent: number }[]
+    opponent_label?: string
+  }
 }

@@ -114,6 +114,9 @@ def _deck_row(deck_id: int) -> dict:
         deck["pool_total"] = sum(p["qty"] for p in deck["pool"])
     deck["card_total"] = sum(c["qty"] for c in deck["cards"])
     deck["validation"] = _validate(deck["cards"], deck["format"])
+    deck["events"] = db.query(
+        """SELECT at, action, detail FROM deck_events
+           WHERE deck_id=%s ORDER BY at DESC, id DESC LIMIT 8""", (deck_id,))
     return deck
 
 
@@ -152,6 +155,7 @@ def create_deck(body: DeckIn):
                 raise HTTPException(409, f"deck {body.name!r} already exists")
             deck_id = cur.fetchone()["id"]
         _write_cards(conn, deck_id, body.cards)
+        _log_deck_event(conn, deck_id, "created", f"via {body.source}")
         conn.commit()
     return _deck_row(deck_id)
 
@@ -218,6 +222,8 @@ def import_deck(body: DeckImportIn):
                 )
                 deck_id = cur.fetchone()["id"]
         _write_cards(conn, deck_id, [DeckCard(**c) for c in matched])
+        if created:
+            _log_deck_event(conn, deck_id, "created", f"imported via {body.source}")
         conn.commit()
     deck = _deck_row(deck_id)
     deck["created"] = created
@@ -256,7 +262,32 @@ def delete_deck(deck_id: int):
 
 class InUseIn(BaseModel):
     in_use: bool
-    force: bool = False   # mark built even when free copies are short
+    force: bool = False           # mark built even when free copies are short
+    pull_from_decks: bool = False  # un-build donor decks holding the copies
+    source: str = "api"
+
+
+def _log_deck_event(conn, deck_id: int, action: str, detail: str = "") -> None:
+    conn.execute(
+        "INSERT INTO deck_events (deck_id, action, detail) VALUES (%s,%s,%s)",
+        (deck_id, action, detail or None))
+
+
+def _donor_decks(deck_id: int, missing: list[dict]) -> list[dict]:
+    """Built constructed decks whose sleeves hold copies of this deck's
+    missing cards — the candidates to cannibalize."""
+    if not missing:
+        return []
+    return db.query(
+        """SELECT d.id, d.name,
+                  array_agg(c.full_name || ' x' || dc.qty ORDER BY c.full_name) AS holds
+           FROM deck_cards dc
+           JOIN decks d ON d.id = dc.deck_id AND d.in_use
+             AND d.format = 'constructed' AND d.id <> %s
+           JOIN cards c ON c.id = dc.card_id
+           WHERE dc.card_id = ANY(%s)
+           GROUP BY d.id, d.name ORDER BY d.name""",
+        (deck_id, [m["card_id"] for m in missing]))
 
 
 def _buildable(deck: dict) -> dict:
@@ -493,19 +524,116 @@ def wantlist():
 @router.put("/decks/{deck_id}/in_use")
 def set_in_use(deck_id: int, body: InUseIn):
     deck = _deck_row(deck_id)
+    donors_pulled: list[dict] = []
     if body.in_use and not deck["in_use"] and not body.force:
         b = _buildable(deck)
         if b["missing"]:
             sealed = deck["format"] == "sealed"
-            raise HTTPException(409, detail={
-                "error": ("deck uses cards that aren't in its sealed pool" if sealed
-                          else "not enough free copies to build this deck"),
-                "missing": b["missing"],
-                "hint": ("add the missing pulls to the pool or fix the deck; "
-                         "send force=true to mark it built anyway" if sealed else
-                         "cards are allocated to other in-use decks or not owned; "
-                         "send force=true to mark it built anyway"),
-            })
-    db.execute("UPDATE decks SET in_use=%s, updated_at=now() WHERE id=%s",
-               (body.in_use, deck_id))
-    return _deck_row(deck_id)
+            donors = [] if sealed else _donor_decks(deck_id, b["missing"])
+            # Would un-building every donor cover the shortfall?
+            after_pull_missing = b["missing"]
+            if donors:
+                rem = {r["card_id"]: r["q"] for r in db.query(
+                    """SELECT dc.card_id, COALESCE(sum(dc.qty), 0) AS q
+                       FROM deck_cards dc
+                       JOIN decks d ON d.id = dc.deck_id AND d.in_use
+                         AND d.format = 'constructed' AND d.id <> %s
+                         AND NOT (d.id = ANY(%s))
+                       WHERE dc.card_id = ANY(%s) GROUP BY dc.card_id""",
+                    (deck_id, [d["id"] for d in donors],
+                     [m["card_id"] for m in b["missing"]]))}
+                after_pull_missing = [m for m in (
+                    {**m, "missing": max(0, m["need"] - max(0, m["have"] - rem.get(m["card_id"], 0)))}
+                    for m in b["missing"]) if m["missing"] > 0]
+            if body.pull_from_decks and donors and not after_pull_missing:
+                # Cannibalize: donors stop being built (their recipes stay
+                # intact); their copies become free for this deck.
+                with db.pool.connection() as conn:
+                    for d in donors:
+                        conn.execute(
+                            "UPDATE decks SET in_use=false, updated_at=now() WHERE id=%s",
+                            (d["id"],))
+                        _log_deck_event(conn, d["id"], "unbuilt",
+                                        f"copies pulled for {deck['name']!r} (#{deck_id}) "
+                                        f"via {body.source}")
+                    conn.commit()
+                donors_pulled = donors
+            else:
+                raise HTTPException(409, detail={
+                    "error": ("deck uses cards that aren't in its sealed pool" if sealed
+                              else "not enough free copies to build this deck"),
+                    "missing": b["missing"],
+                    "donors": donors,
+                    "after_pull_missing": after_pull_missing,
+                    "hint": ("add the missing pulls to the pool or fix the deck; "
+                             "send force=true to mark it built anyway" if sealed else
+                             "send pull_from_decks=true to un-build the donor decks and "
+                             "pull their copies, or force=true to mark built anyway"),
+                })
+    changed = deck["in_use"] != body.in_use
+    with db.pool.connection() as conn:
+        conn.execute("UPDATE decks SET in_use=%s, updated_at=now() WHERE id=%s",
+                     (body.in_use, deck_id))
+        if changed:
+            detail = ""
+            if donors_pulled:
+                detail = "pulled copies from: " + ", ".join(d["name"] for d in donors_pulled) + " · "
+            elif body.force and body.in_use:
+                detail = "forced despite shortfall · "
+            _log_deck_event(conn, deck_id, "built" if body.in_use else "unbuilt",
+                            f"{detail}via {body.source}")
+        conn.commit()
+    result = _deck_row(deck_id)
+    result["pulled_from"] = [d["name"] for d in donors_pulled]
+    return result
+
+
+class CloneIn(BaseModel):
+    name: str
+    source: str = "api"
+
+
+@router.post("/decks/{deck_id}/clone", status_code=201)
+def clone_deck(deck_id: int, body: CloneIn):
+    """Duplicate a deck's list/notes/format as a new unbuilt deck — the
+    rebuild-as-new-version workflow. The original's recipe stays intact."""
+    src = db.query_one("SELECT * FROM decks WHERE id=%s", (deck_id,))
+    if not src:
+        raise HTTPException(404, "no such deck")
+    with db.pool.connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "INSERT INTO decks (name, notes, created_source, format)"
+                    " VALUES (%s,%s,%s,%s) RETURNING id",
+                    (body.name, src["notes"], body.source, src["format"]))
+            except Exception:
+                raise HTTPException(409, f"deck {body.name!r} already exists")
+            new_id = cur.fetchone()["id"]
+            cur.execute(
+                """INSERT INTO deck_cards (deck_id, card_id, qty)
+                   SELECT %s, card_id, qty FROM deck_cards WHERE deck_id=%s""",
+                (new_id, deck_id))
+        _log_deck_event(conn, new_id, "cloned",
+                        f"from {src['name']!r} (#{deck_id}) via {body.source}")
+        conn.commit()
+    return _deck_row(new_id)
+
+
+@router.get("/allocation-conflicts")
+def allocation_conflicts():
+    """Cards claimed by built constructed decks beyond owned copies — the DB is
+    lying about physical reality (usually after a force-build). Empty = clean."""
+    return db.query(
+        """SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.collector_number,
+                  COALESCE(col.qty_normal + col.qty_foil, 0) AS owned,
+                  sum(dc.qty) AS claimed,
+                  array_agg(d.name || ' x' || dc.qty ORDER BY d.name) AS decks
+           FROM deck_cards dc
+           JOIN decks d ON d.id = dc.deck_id AND d.in_use AND d.format = 'constructed'
+           JOIN cards c ON c.id = dc.card_id
+           JOIN sets s ON s.id = c.set_id
+           LEFT JOIN collection col ON col.card_id = c.id
+           GROUP BY c.id, c.full_name, s.code, c.collector_number, col.qty_normal, col.qty_foil
+           HAVING sum(dc.qty) > COALESCE(col.qty_normal + col.qty_foil, 0)
+           ORDER BY c.full_name""")

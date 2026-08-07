@@ -180,22 +180,61 @@ export default function DeckDetail() {
     load()
   }
 
-  const toggleInUse = async (force = false) => {
+  const toggleInUse = async (opts: { force?: boolean; pull?: boolean } = {}) => {
     if (!deck) return
     setError('')
     try {
-      await send('PUT', `/decks/${deck.id}/in_use`, { in_use: !deck.in_use, force })
+      const d = await send<Deck>('PUT', `/decks/${deck.id}/in_use`, {
+        in_use: !deck.in_use, force: !!opts.force, pull_from_decks: !!opts.pull, source: 'webui',
+      })
+      if (d.pulled_from && d.pulled_from.length > 0) {
+        alert(`Built. Un-built donor deck(s) whose copies this deck now uses: ${d.pulled_from.join(', ')}.`)
+      }
       load()
     } catch (e) {
-      const err = e as Error & { status?: number; detail?: { missing?: { full_name: string; missing: number }[] } }
+      const err = e as Error & {
+        status?: number
+        detail?: {
+          missing?: { full_name: string; missing: number }[]
+          donors?: { id: number; name: string; holds: string[] }[]
+          after_pull_missing?: { full_name: string; missing: number }[]
+        }
+      }
       if (err.status === 409 && err.detail?.missing) {
+        const donors = err.detail.donors ?? []
+        const afterPull = err.detail.after_pull_missing ?? err.detail.missing
+        if (donors.length > 0 && afterPull.length === 0) {
+          const list = donors.map((d) => `  • ${d.name} — holds ${d.holds.join(', ')}`).join('\n')
+          if (confirm(`The missing copies are sleeved in built decks:\n${list}\n\n`
+            + `Un-build those decks (their lists stay intact) and pull the copies into this one?`)) {
+            toggleInUse({ pull: true })
+          }
+          return
+        }
         const list = err.detail.missing.map((c) => `${c.missing}x ${c.full_name}`).join(', ')
-        if (confirm(`Not enough free copies (allocated to other built decks or unowned): ${list}.\n\nMark as built anyway?`)) {
-          toggleInUse(true)
+        const donorNote = donors.length
+          ? `\n\nPartial copies are in: ${donors.map((d) => d.name).join(', ')} — but un-building them still wouldn't cover it.`
+          : ''
+        if (confirm(`Not enough free copies (allocated to other built decks or unowned): ${list}.${donorNote}\n\nMark as built anyway? (The database will over-claim copies — the Decks page will flag it.)`)) {
+          toggleInUse({ force: true })
         }
       } else {
         setError(String(err.message ?? err))
       }
+    }
+  }
+
+  const cloneDeck = async () => {
+    if (!deck) return
+    const m = deck.name.match(/^(.*?)[\s-]*v(\d+)(.*)$/i)
+    const suggestion = m ? `${m[1].trimEnd()} v${Number(m[2]) + 1}${m[3]}` : `${deck.name} v2`
+    const name = prompt('Name for the new version:', suggestion)
+    if (!name?.trim()) return
+    try {
+      const d = await send<Deck>('POST', `/decks/${deck.id}/clone`, { name: name.trim(), source: 'webui' })
+      nav(`/decks/${d.id}`)
+    } catch (e) {
+      setError(String((e as Error).message ?? e))
     }
   }
 
@@ -215,6 +254,10 @@ export default function DeckDetail() {
           <Link to={`/decks/${deck.id}/export`} style={{ marginRight: 8 }}>
             <button className="secondary">Export / print</button>
           </Link>
+          <button className="secondary" onClick={cloneDeck} style={{ marginRight: 8 }}
+            title="Duplicate this list as a new unbuilt version">
+            Duplicate as version
+          </button>
           <Link to={`/sim?deck=${deck.id}`} style={{ marginRight: 8 }}>
             <button className="secondary">Simulate</button>
           </Link>
@@ -384,6 +427,17 @@ export default function DeckDetail() {
           <h4>Unmatched import lines</h4>
           {deck.unmatched.map((u, i) => (
             <p className="error" key={i}>{u.qty ?? ''} {u.name} — {u.reason}</p>
+          ))}
+        </div>
+      )}
+      {deck.events && deck.events.length > 0 && (
+        <div className="panel">
+          <h4 style={{ margin: '0 0 0.4rem' }}>History</h4>
+          {deck.events.map((ev, i) => (
+            <p className="muted" key={i} style={{ margin: '0.15rem 0', fontSize: '0.85rem' }}>
+              {ev.at.slice(0, 16).replace('T', ' ')} — <strong>{ev.action}</strong>
+              {ev.detail ? ` (${ev.detail})` : ''}
+            </p>
           ))}
         </div>
       )}

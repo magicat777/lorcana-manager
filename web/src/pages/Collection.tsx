@@ -4,7 +4,7 @@ import CardGrid from '../components/CardGrid'
 import type { SearchResult, SetInfo } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
-const RARITIES = ['Common', 'Uncommon', 'Rare', 'Super_rare', 'Legendary', 'Enchanted']
+const RARITIES = ['Common', 'Uncommon', 'Rare', 'Super_rare', 'Epic', 'Legendary', 'Iconic', 'Enchanted', 'Promo']
 
 const FILTER_KEY = 'cards.filters'
 

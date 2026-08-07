@@ -73,6 +73,7 @@ class EventIn(BaseModel):
 
 
 class EventPost(BaseModel):
+    # post-event fields
     final_record: str | None = None
     packs_won: int | None = None
     promo: bool | None = None
@@ -80,6 +81,16 @@ class EventPost(BaseModel):
     one_change: str | None = None
     notes: str | None = None
     observations: list[ObservationIn] | None = None   # never_drew / always_dead lists
+    # header fields — editable after the fact (all partial: None = unchanged)
+    date: str | None = None
+    store: str | None = None
+    venue_slug: str | None = None      # resolves venue_id + display_name like create
+    format: str | None = None
+    deck_id: int | None = None
+    deck_version: str | None = None
+    rounds: int | None = None
+    player_count: int | None = None
+    entry_fee: float | None = None
 
 
 def _resolve_card(cur, obs: ObservationIn) -> tuple[str | None, str | None]:
@@ -210,15 +221,28 @@ def get_event(event_id: int):
 def update_event(event_id: int, body: EventPost):
     if not db.query_one("SELECT 1 FROM events WHERE id=%s", (event_id,)):
         raise HTTPException(404, "no such event")
+    if body.deck_id is not None and not db.query_one(
+            "SELECT 1 FROM decks WHERE id=%s", (body.deck_id,)):
+        raise HTTPException(404, f"no deck #{body.deck_id}")
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             sets, params = [], []
             for field in ("final_record", "packs_won", "promo",
-                          "biggest_problem", "one_change", "notes"):
+                          "biggest_problem", "one_change", "notes",
+                          "date", "store", "format", "deck_id", "deck_version",
+                          "rounds", "player_count", "entry_fee"):
                 v = getattr(body, field)
                 if v is not None:
                     sets.append(f"{field}=%s")
                     params.append(v)
+            if body.venue_slug:
+                venue = db.query_one(
+                    "SELECT id, display_name FROM venues WHERE slug=%s",
+                    (body.venue_slug,))
+                if not venue:
+                    raise HTTPException(404, f"no venue {body.venue_slug!r}")
+                sets += ["venue_id=%s", "store=%s"]
+                params += [venue["id"], venue["display_name"]]
             if sets:
                 cur.execute(f"UPDATE events SET {', '.join(sets)} WHERE id=%s",
                             params + [event_id])

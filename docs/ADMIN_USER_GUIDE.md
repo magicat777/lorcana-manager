@@ -630,6 +630,10 @@ pairings — never at the table.**
   for next week (one — not four)**.
 - The event page is your pre-pairings review: every round with games,
   observations (⚔ threats, 💀 dead, ★ MVP), one-liners.
+- **Everything is editable after the fact:** ✎ Edit on any round loads it back
+  into the form (saving replaces that round atomically), and ✎ Edit event
+  opens the header — date, venue, format, deck/version, rounds, players,
+  entry fee — saved via a partial `PUT /events/{id}`.
 
 This data feeds the **cut list** (cards never MVP, sorted by dead mentions —
 MCP `lorcana_cut_list`), the **local meta** table (ink-pair frequencies +

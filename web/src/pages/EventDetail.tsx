@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { get, send } from '../api'
-import type { EventDetailData, MatchRow } from '../types'
+import type { Deck, EventDetailData, MatchRow, Venue } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
 const RESULTS = ['2-0', '2-1', '1-2', '0-2', 'DRAW', 'BYE']
@@ -24,6 +24,11 @@ export default function EventDetail() {
   const [ev, setEv] = useState<EventDetailData | null>(null)
   const [m, setM] = useState(emptyMatch())
   const [post, setPost] = useState({ final_record: '', packs_won: '', promo: false, never_drew: '', always_dead: '', biggest_problem: '', one_change: '' })
+  const [editingRound, setEditingRound] = useState<number | null>(null)
+  const [editHeader, setEditHeader] = useState(false)
+  const [venues, setVenues] = useState<Venue[]>([])
+  const [decks, setDecks] = useState<Deck[]>([])
+  const [hdr, setHdr] = useState({ date: '', venue_slug: '', store: '', format: '', deck_id: '', deck_version: '', rounds: '', player_count: '', entry_fee: '' })
   const [error, setError] = useState('')
   const [saved, setSaved] = useState('')
 
@@ -42,6 +47,71 @@ export default function EventDetail() {
       })
     }).catch((e) => setError(String(e)))
   useEffect(() => { load() }, [id])
+  useEffect(() => {
+    get<Venue[]>('/venues').then(setVenues).catch(() => {})
+    get<Deck[]>('/decks').then(setDecks).catch(() => {})
+  }, [])
+
+  const startEditHeader = () => {
+    if (!ev) return
+    setHdr({
+      date: ev.date, venue_slug: '', store: ev.store, format: ev.format,
+      deck_id: ev.deck_id != null ? String(ev.deck_id) : '',
+      deck_version: ev.deck_version ?? '',
+      rounds: ev.rounds != null ? String(ev.rounds) : '',
+      player_count: ev.player_count != null ? String(ev.player_count) : '',
+      entry_fee: ev.entry_fee != null ? String(ev.entry_fee) : '',
+    })
+    setEditHeader(true)
+  }
+
+  const saveHeader = async () => {
+    setError('')
+    try {
+      await send('PUT', `/events/${id}`, {
+        date: hdr.date || null,
+        venue_slug: hdr.venue_slug || null,
+        store: hdr.venue_slug ? null : (hdr.store.trim() || null),
+        format: hdr.format || null,
+        deck_id: hdr.deck_id ? Number(hdr.deck_id) : null,
+        deck_version: hdr.deck_version || null,
+        rounds: hdr.rounds ? Number(hdr.rounds) : null,
+        player_count: hdr.player_count ? Number(hdr.player_count) : null,
+        entry_fee: hdr.entry_fee ? Number(hdr.entry_fee) : null,
+      })
+      setEditHeader(false)
+      setSaved('Event details saved')
+      load()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const startEditRound = (match: MatchRow) => {
+    const obs = (kind: string) => match.observations.filter((o) => o.kind === kind).map((o) => o.value)
+    const threats = obs('threat_card')
+    setM({
+      round: String(match.round),
+      opponent_handle: match.opponent_handle ?? '',
+      result: match.result,
+      inks: [match.opp_ink_1, match.opp_ink_2].filter(Boolean) as string[],
+      opp_shape: match.opp_shape ?? 'unclear',
+      one_liner: match.one_liner ?? '',
+      threats: [0, 1, 2, 3].map((i) => threats[i] ?? ''),
+      tags: obs('tag'),
+      dead: obs('my_dead_card')[0] ?? '',
+      mvp: obs('my_mvp')[0] ?? '',
+      games: [1, 2, 3].map((n) => {
+        const g = match.games.find((x) => x.game_no === n)
+        return g
+          ? { game_no: n, on_play: g.on_play, won: g.won, loss_mode: g.loss_mode ?? 'na', cards_altered: g.cards_altered != null ? String(g.cards_altered) : '' }
+          : emptyGame(n)
+      }),
+    })
+    setEditingRound(match.round)
+    setSaved('')
+    document.getElementById('log-round-form')?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   const toggleInk = (ink: string) =>
     setM((cur) => ({
@@ -70,9 +140,11 @@ export default function EventDetail() {
         round: Number(m.round), opponent_handle: m.opponent_handle.trim(), result: m.result,
         opp_ink_1: m.inks[0] ?? '', opp_ink_2: m.inks[1] ?? '', opp_shape: m.opp_shape,
         one_liner: m.one_liner.trim(), games, observations: obs,
+        overwrite: editingRound != null,
       })
       setM(emptyMatch())
-      setSaved(`Round ${m.round} saved`)
+      setSaved(editingRound != null ? `Round ${m.round} updated` : `Round ${m.round} saved`)
+      setEditingRound(null)
       load()
     } catch (e) {
       setError(String(e))
@@ -106,7 +178,40 @@ export default function EventDetail() {
   return (
     <div style={{ maxWidth: 1100 }}>
       <p><Link to="/matches">← all events</Link></p>
-      <h1>{ev.date} — {ev.store} <span className="muted">({ev.final_record || ev.record})</span></h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <h1>{ev.date} — {ev.store} <span className="muted">({ev.final_record || ev.record})</span></h1>
+        <button className="secondary" onClick={() => (editHeader ? setEditHeader(false) : startEditHeader())}>
+          {editHeader ? 'Cancel edit' : '✎ Edit event'}
+        </button>
+      </div>
+      {editHeader && (
+        <div className="panel">
+          <div className="filterbar">
+            <input type="date" value={hdr.date} onChange={(e) => setHdr({ ...hdr, date: e.target.value })} />
+            <select value={hdr.venue_slug} onChange={(e) => setHdr({ ...hdr, venue_slug: e.target.value })}>
+              <option value="">Venue: keep "{ev.store}"</option>
+              {venues.map((v) => <option key={v.slug} value={v.slug}>{v.display_name}</option>)}
+            </select>
+            {!hdr.venue_slug && (
+              <input placeholder="Store name" value={hdr.store} onChange={(e) => setHdr({ ...hdr, store: e.target.value })} />
+            )}
+            <select value={hdr.format} onChange={(e) => setHdr({ ...hdr, format: e.target.value })}>
+              <option value="Core Constructed">Core Constructed</option>
+              <option value="Sealed">Sealed</option>
+              <option value="Draft">Draft</option>
+            </select>
+            <select value={hdr.deck_id} onChange={(e) => setHdr({ ...hdr, deck_id: e.target.value })}>
+              <option value="">My deck…</option>
+              {decks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <input placeholder="Version" size={6} value={hdr.deck_version} onChange={(e) => setHdr({ ...hdr, deck_version: e.target.value })} />
+            <input placeholder="Rounds" size={4} value={hdr.rounds} onChange={(e) => setHdr({ ...hdr, rounds: e.target.value })} />
+            <input placeholder="Players" size={4} value={hdr.player_count} onChange={(e) => setHdr({ ...hdr, player_count: e.target.value })} />
+            <input placeholder="Entry $" size={5} value={hdr.entry_fee} onChange={(e) => setHdr({ ...hdr, entry_fee: e.target.value })} />
+            <button onClick={saveHeader}>Save event details</button>
+          </div>
+        </div>
+      )}
       <p className="muted">
         {ev.deck_name ?? 'no deck'}{ev.deck_version ? ` v${ev.deck_version}` : ''} · {ev.format}
         {ev.player_count ? ` · ${ev.player_count} players` : ''}{ev.rounds ? ` · ${ev.rounds} rounds` : ''}
@@ -121,9 +226,13 @@ export default function EventDetail() {
               R{match.round} vs {match.opponent_handle || '?'} — {match.result}
               {match.opp_ink_1 && <span className="muted"> · {match.opp_ink_1}{match.opp_ink_2 ? `/${match.opp_ink_2}` : ''} {match.opp_shape}</span>}
             </strong>
-            <button className="secondary" onClick={async () => {
-              if (confirm(`Delete round ${match.round}?`)) { await send('DELETE', `/matches/${match.id}`); load() }
-            }}>✕</button>
+            <span>
+              <button className="secondary" style={{ marginRight: 6 }} title="Load this round into the form to edit"
+                onClick={() => startEditRound(match)}>✎ Edit</button>
+              <button className="secondary" onClick={async () => {
+                if (confirm(`Delete round ${match.round}?`)) { await send('DELETE', `/matches/${match.id}`); load() }
+              }}>✕</button>
+            </span>
           </div>
           <p className="muted" style={{ margin: '0.3rem 0' }}>
             {match.games.map((g) => `G${g.game_no} ${g.on_play == null ? '' : g.on_play ? 'play ' : 'draw '}${g.won == null ? '?' : g.won ? 'W' : `L(${g.loss_mode})`}`).join(' · ')}
@@ -140,8 +249,16 @@ export default function EventDetail() {
         </div>
       ))}
 
-      <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Log round (~90 seconds)</h3>
+      <div className="panel" id="log-round-form">
+        <h3 style={{ marginTop: 0 }}>
+          {editingRound != null ? `Editing round ${editingRound}` : 'Log round (~90 seconds)'}
+          {editingRound != null && (
+            <button className="secondary" style={{ marginLeft: 10 }}
+              onClick={() => { setM(emptyMatch()); setEditingRound(null); load() }}>
+              Cancel edit
+            </button>
+          )}
+        </h3>
         <div className="filterbar">
           <input placeholder="Rd" size={3} value={m.round} onChange={(e) => setM({ ...m, round: e.target.value })} />
           <input placeholder="Opponent" value={m.opponent_handle} onChange={(e) => setM({ ...m, opponent_handle: e.target.value })} />
@@ -208,7 +325,7 @@ export default function EventDetail() {
         </div>
         <input style={{ width: '100%', marginTop: '0.4rem' }} placeholder="One sentence…" value={m.one_liner}
           onChange={(e) => setM({ ...m, one_liner: e.target.value })} />
-        <p><button onClick={saveMatch} disabled={!m.round}>Save round</button></p>
+        <p><button onClick={saveMatch} disabled={!m.round}>{editingRound != null ? 'Update round' : 'Save round'}</button></p>
       </div>
 
       <div className="panel">

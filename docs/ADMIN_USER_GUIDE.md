@@ -556,9 +556,15 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   (rows go red when the deck uses cards not in the pool), never against your
   collection — and marking a sealed deck built never allocates collection
   copies, since pack cards are separate physical cards.
-- **Deck detail:** add cards via live search; per-card −/+ qty (⚠ above 4
-  copies), owned and **free** columns (free = not allocated to other built
-  decks; short rows highlighted); remove with ✕. Every edit saves immediately.
+- **Deck detail:** add cards via live search — filterable by ink, type,
+  **Core-legal** (default on), and **free copies only** (owned copies not
+  allocated to built decks); results show ink dots, cost, and free count.
+  Per-card −/+ qty (⚠ above 4 copies), owned and **free** columns (short rows
+  highlighted); remove with ✕. Every edit saves immediately.
+- **Live composition panel:** cost-curve bars, per-ink counts, type breakdown,
+  inkable/uninkable split, avg cost, and total character lore — updating with
+  every edit (the same analysis the export sheet shows, without leaving the
+  builder).
 - **Buildable check:** green ✔ when the deck is coverable from free copies,
   red ✘ with the exact shortfall **and cost to complete** (missing copies ×
   current prices). Validation warnings (60 cards, ≤4 per name, ≤2 inks,

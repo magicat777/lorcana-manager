@@ -112,6 +112,8 @@ export interface DeckCardRow {
   ink: string | null
   inks: string[] | null
   cost: number | null
+  inkwell?: boolean | null
+  lore?: number | null
   rarity: string | null
   type: string[] | null
   set_code: string

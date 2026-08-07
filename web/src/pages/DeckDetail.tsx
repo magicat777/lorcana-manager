@@ -1,8 +1,73 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { get, send } from '../api'
-import { InkDots } from '../components/CardGrid'
-import type { Card, Deck, SearchResult } from '../types'
+import { InkDots, INK_COLORS } from '../components/CardGrid'
+import type { Card, Deck, DeckCardRow, SearchResult } from '../types'
+
+const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
+const TYPES = ['Character', 'Action', 'Song', 'Item', 'Location']
+
+function Composition({ cards }: { cards: DeckCardRow[] }) {
+  if (!cards.length) return null
+  const total = cards.reduce((a, c) => a + c.qty, 0)
+  const curve: Record<string, number> = {}
+  const inkCounts: Record<string, number> = {}
+  const typeCounts: Record<string, number> = {}
+  let inkable = 0
+  let costSum = 0
+  let lore = 0
+  for (const c of cards) {
+    const bucket = (c.cost ?? 0) >= 9 ? '9+' : String(c.cost ?? 0)
+    curve[bucket] = (curve[bucket] ?? 0) + c.qty
+    for (const i of (c.inks?.length ? c.inks : c.ink ? [c.ink] : []))
+      inkCounts[i] = (inkCounts[i] ?? 0) + c.qty
+    const t = c.type ?? []
+    const primary = t.includes('Song') ? 'Song'
+      : (['Character', 'Action', 'Item', 'Location'].find((k) => t.includes(k)) ?? 'Other')
+    typeCounts[primary] = (typeCounts[primary] ?? 0) + c.qty
+    if (c.inkwell) inkable += c.qty
+    costSum += (c.cost ?? 0) * c.qty
+    if (c.lore) lore += c.lore * c.qty
+  }
+  const buckets = Object.keys(curve).sort((a, b) => (a === '9+' ? 99 : +a) - (b === '9+' ? 99 : +b))
+  const maxBucket = Math.max(...Object.values(curve), 1)
+  return (
+    <div className="panel" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+      <div style={{ flex: '0 0 260px' }}>
+        <p className="muted" style={{ margin: '0 0 0.3rem' }}>Cost curve</p>
+        {buckets.map((b) => (
+          <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0' }}>
+            <span className="muted" style={{ width: 20, textAlign: 'right', fontSize: '0.8rem' }}>{b}</span>
+            <div className="progress" style={{ flex: 1 }}>
+              <div style={{ width: `${(100 * curve[b]) / maxBucket}%` }} />
+            </div>
+            <span className="muted" style={{ width: 18, fontSize: '0.8rem' }}>{curve[b]}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: '0.88rem' }}>
+        <p className="muted" style={{ margin: '0 0 0.3rem' }}>Composition</p>
+        <p style={{ margin: '0.15rem 0' }}>
+          {Object.entries(inkCounts).map(([i, n]) => (
+            <span key={i} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
+              <span className="inkdot" style={{ background: INK_COLORS[i] }} />{i} {n}
+            </span>
+          ))}
+        </p>
+        <p style={{ margin: '0.15rem 0' }}>
+          {['Character', 'Action', 'Song', 'Item', 'Location', 'Other']
+            .filter((t) => typeCounts[t])
+            .map((t) => `${t} ${typeCounts[t]}`).join(' · ')}
+        </p>
+        <p className="muted" style={{ margin: '0.15rem 0' }}>
+          {inkable} inkable / {total - inkable} uninkable
+          {' · '}avg cost {total ? (costSum / total).toFixed(2) : '0'}
+          {' · '}{lore} lore on characters
+        </p>
+      </div>
+    </div>
+  )
+}
 
 interface Buildable {
   buildable: boolean
@@ -23,6 +88,10 @@ export default function DeckDetail() {
   const [buildable, setBuildable] = useState<Buildable | null>(null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Card[]>([])
+  const [searchInk, setSearchInk] = useState('')
+  const [searchType, setSearchType] = useState('')
+  const [searchCore, setSearchCore] = useState(true)
+  const [searchFree, setSearchFree] = useState(false)
   const [poolText, setPoolText] = useState('')
   const [poolMsg, setPoolMsg] = useState('')
   const [error, setError] = useState('')
@@ -34,17 +103,26 @@ export default function DeckDetail() {
   useEffect(load, [id])
 
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() && !searchInk && !searchType) {
       setHits([])
       return
     }
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q: query, page_size: 8 })
-        .then((d) => setHits(d.results))
+      get<SearchResult>('/cards', {
+        q: query, ink: searchInk, type: searchType,
+        page_size: searchFree ? 30 : 8,
+        ...(searchCore ? { core: 'true' } : {}),
+        ...(searchFree ? { owned: 'owned' } : {}),
+      })
+        .then((d) => {
+          let rows = d.results
+          if (searchFree) rows = rows.filter((c) => c.qty_normal + c.qty_foil - c.qty_in_use > 0)
+          setHits(rows.slice(0, 8))
+        })
         .catch(() => {})
     }, 250)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, searchInk, searchType, searchCore, searchFree])
 
   const save = async (cards: { card_id: string; qty: number }[]) => {
     if (!deck) return
@@ -211,21 +289,45 @@ export default function DeckDetail() {
         </div>
       )}
 
+      {deck.cards && deck.cards.length > 0 && <Composition cards={deck.cards} />}
+
       <div className="panel">
-        <input
-          type="search"
-          placeholder="Add a card — search by name…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ width: '60%' }}
-        />
+        <div className="filterbar" style={{ marginBottom: 0 }}>
+          <input
+            type="search"
+            placeholder="Add a card — search by name…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ minWidth: 220 }}
+          />
+          <select value={searchInk} onChange={(e) => setSearchInk(e.target.value)}>
+            <option value="">Any ink</option>
+            {INKS.map((i) => <option key={i}>{i}</option>)}
+          </select>
+          <select value={searchType} onChange={(e) => setSearchType(e.target.value)}>
+            <option value="">Any type</option>
+            {TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <label className="muted" style={{ cursor: 'pointer' }}>
+            <input type="checkbox" checked={searchCore} onChange={(e) => setSearchCore(e.target.checked)} />
+            {' '}Core-legal
+          </label>
+          <label className="muted" style={{ cursor: 'pointer' }}>
+            <input type="checkbox" checked={searchFree} onChange={(e) => setSearchFree(e.target.checked)} />
+            {' '}Free copies only
+          </label>
+        </div>
         {hits.length > 0 && (
           <table>
             <tbody>
               {hits.map((h) => (
                 <tr key={h.id}>
-                  <td>{h.full_name}</td>
+                  <td><InkDots ink={h.ink} inks={h.inks} />{h.full_name}</td>
                   <td className="muted">{h.set_code}·{h.collector_number}</td>
+                  <td className="muted">cost {h.cost ?? '—'}</td>
+                  <td className="muted" title="free copies in collection">
+                    {Math.max(0, h.qty_normal + h.qty_foil - h.qty_in_use)} free
+                  </td>
                   <td><button className="secondary" onClick={() => addCard(h)}>Add</button></td>
                 </tr>
               ))}

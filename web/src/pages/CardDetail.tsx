@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { get, money, send } from '../api'
 import { InkDots } from '../components/CardGrid'
+import RarityIcon from '../components/RarityIcon'
 import Sparkline from '../components/Sparkline'
 import type { Card } from '../types'
 
@@ -46,7 +47,8 @@ export default function CardDetail() {
         <div style={{ maxWidth: 560 }}>
           <h1 style={{ marginBottom: 0 }}>{card.full_name}</h1>
           <p className="muted">
-            {card.set_name} · #{card.collector_number} · {card.rarity?.replace('_', ' ')}
+            {card.set_name} · #{card.collector_number} ·{' '}
+            {card.rarity && <RarityIcon rarity={card.rarity} size={13} />} {card.rarity?.replace('_', ' ')}
             {(card.inks?.length || card.ink) && (
               <>
                 {' · '}

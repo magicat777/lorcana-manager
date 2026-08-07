@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import RarityIcon from './RarityIcon'
 import type { Card } from '../types'
 
 export const INK_COLORS: Record<string, string> = {
@@ -52,8 +53,9 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
                 <InkDots ink={c.ink} inks={c.inks} />
                 {c.set_code}·{c.collector_number}
               </span>
-              <span className="muted">
-                {!c.core_legal && <span title="Not Core Constructed legal (set rotated)">⟳ </span>}
+              <span className="muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {!c.core_legal && <span title="Not Core Constructed legal (set rotated)">⟳</span>}
+                {c.rarity && <RarityIcon rarity={c.rarity} size={12} />}
                 {c.rarity?.replace('_', ' ')}
               </span>
             </div>

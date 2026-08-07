@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get, money } from '../api'
+import RarityIcon from '../components/RarityIcon'
 
 interface WantlistData {
   wanted_decks: { id: number; name: string }[]
@@ -70,7 +71,11 @@ export default function Wantlist() {
                       <td><strong>{c.need}</strong></td>
                       <td><Link to={`/cards/${c.set_code}/${c.collector_number}`}>{c.full_name}</Link></td>
                       <td className="muted">{c.set_code}·{c.collector_number}</td>
-                      <td className="muted">{c.rarity?.replace('_', ' ')}</td>
+                      <td className="muted">
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {c.rarity && <RarityIcon rarity={c.rarity} size={12} />}{c.rarity?.replace('_', ' ')}
+                        </span>
+                      </td>
                       <td>{money(c.price_usd)}</td>
                       <td>{c.line_cost != null ? money(c.line_cost) : '—'}</td>
                       <td className="muted">{c.decks.join(', ')}</td>

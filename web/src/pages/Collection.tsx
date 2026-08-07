@@ -1,10 +1,52 @@
 import { useEffect, useState } from 'react'
 import { get } from '../api'
+import { useRef } from 'react'
 import CardGrid from '../components/CardGrid'
+import RarityIcon from '../components/RarityIcon'
 import type { SearchResult, SetInfo } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Super_rare', 'Epic', 'Legendary', 'Iconic', 'Enchanted', 'Promo']
+
+function RarityFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="secondary" onClick={() => setOpen(!open)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+        {value ? <><RarityIcon rarity={value} /> {value.replace('_', ' ')}</> : 'All rarities'}
+        <span className="muted">▾</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30,
+          background: 'var(--panel)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: 4, minWidth: 170, boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+        }}>
+          {['', ...RARITIES].map((r) => (
+            <div key={r} className="dropdown-opt" onClick={() => { onChange(r); setOpen(false) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '0.35rem 0.6rem',
+                cursor: 'pointer', borderRadius: 6,
+                background: r === value ? 'var(--bg2)' : undefined,
+              }}>
+              {r ? <RarityIcon rarity={r} /> : <span style={{ width: 14, flexShrink: 0 }} />}
+              <span>{r ? r.replace('_', ' ') : 'All rarities'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const FILTER_KEY = 'cards.filters'
 
@@ -84,10 +126,7 @@ export default function Collection() {
           <option value="">All inks</option>
           {INKS.map((i) => <option key={i}>{i}</option>)}
         </select>
-        <select value={rarity} onChange={(e) => { setRarity(e.target.value); reset() }}>
-          <option value="">All rarities</option>
-          {RARITIES.map((r) => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-        </select>
+        <RarityFilter value={rarity} onChange={(r) => { setRarity(r); reset() }} />
         <select value={owned} onChange={(e) => { setOwned(e.target.value); reset() }}>
           <option value="all">Owned + missing</option>
           <option value="owned">Owned only</option>

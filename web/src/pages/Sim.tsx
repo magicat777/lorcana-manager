@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { get, send } from '../api'
 import type { Deck, SimRun, SimAnalysis } from '../types'
+import LoreCurve from '../components/LoreCurve'
+import TurnTape from '../components/TurnTape'
 
 const POLICIES = ['heuristic', 'random', 'mcts16', 'mcts32', 'mcts64', 'mcts128']
 const PENDING = new Set(['queued', 'running'])
@@ -306,10 +308,12 @@ function PairedDeltas({ runs }: { runs: SimRun[] }) {
 function Analysis({ run, analysis }: { run: SimRun; analysis: SimAnalysis }) {
   const g = analysis.game
   const s = analysis.shape
+  const agg = analysis.aggregates
+  const tapes = analysis.tapes
   return (
     <div className="panel" style={{ marginTop: '1rem' }}>
       <h4 style={{ marginTop: 0 }}>
-        Why run #{run.id} lost games — {run.deck_name ?? `deck ${run.deck_id}`} vs{' '}
+        Run #{run.id} breakdown — {run.deck_name ?? `deck ${run.deck_id}`} vs{' '}
         {run.opponent_label ?? run.opponent}
       </h4>
       <p className="muted">
@@ -364,6 +368,56 @@ function Analysis({ run, analysis }: { run: SimRun; analysis: SimAnalysis }) {
             <code>python -m lorcana_engine.teacher --seed {g.seed} --coach</code>.
           </p>
         </>
+      )}
+
+      {agg && !agg.error && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <h5 style={{ margin: '0 0 0.4rem' }}>Tempo — who was ahead, and when</h5>
+          <LoreCurve
+            wins={agg.lore_curve.wins}
+            losses={agg.lore_curve.losses}
+            sample={agg.sample}
+          />
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+            {agg.most_played.length > 0 && (
+              <div>
+                <h5 style={{ margin: '0 0 0.3rem' }}>Reached the table most</h5>
+                <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.85rem' }}>
+                  {agg.most_played.slice(0, 8).map((c) => (
+                    <li key={c.name}>
+                      {c.name} <span className="muted">{c.pct_of_games}% of games</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {agg.never_played.length > 0 && (
+              <div>
+                <h5 style={{ margin: '0 0 0.3rem' }}>Never played in any sampled game</h5>
+                <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.85rem' }}>
+                  {agg.never_played.map((n) => (
+                    <li key={n} className="muted">{n}</li>
+                  ))}
+                </ul>
+                <p className="muted" style={{ fontSize: '0.75rem', maxWidth: '22rem' }}>
+                  Sampled, not exhaustive — a card missing from {agg.sample} games is a cut
+                  candidate, not proof it is dead.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tapes && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <h5 style={{ margin: '0 0 0.2rem' }}>First turns, play by play</h5>
+          <p className="muted" style={{ fontSize: '0.8rem', marginTop: 0 }}>
+            What was played and what answered it. Regenerated from the game&apos;s seed, so this is
+            the exact game counted in the record above.
+          </p>
+          <TurnTape loss={tapes.loss} win={tapes.win} />
+        </div>
       )}
     </div>
   )

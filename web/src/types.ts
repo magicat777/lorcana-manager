@@ -298,6 +298,36 @@ export interface SimTurningPoint {
   options: number
 }
 
+export interface SimTapeTurn {
+  turn: number
+  player: 'you' | 'opponent'
+  actions: string[]
+  banished: string[]
+  lore: { you: number; opponent: number }
+  board: { you: string[]; opponent: string[] }
+}
+
+export interface SimTape {
+  seed: number
+  seat: number
+  won: boolean
+  turns: number
+  final_lore: { you: number; opponent: number }
+  tape: SimTapeTurn[]
+  error?: string
+}
+
+export interface SimAggregates {
+  sample: number
+  lore_curve: {
+    wins: { turn: number; you: number; opponent: number; n?: number }[]
+    losses: { turn: number; you: number; opponent: number; n?: number }[]
+  }
+  most_played: { name: string; pct_of_games: number }[]
+  never_played: string[]
+  error?: string
+}
+
 export interface SimAnalysis {
   shape: {
     avg_turns_in_losses: number | null
@@ -318,4 +348,6 @@ export interface SimAnalysis {
     lore_trace: { turn: number; you: number; opponent: number }[]
     opponent_label?: string
   }
+  tapes?: { loss?: SimTape; win?: SimTape }
+  aggregates?: SimAggregates
 }

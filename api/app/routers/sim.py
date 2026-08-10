@@ -180,11 +180,32 @@ def get_run(run_id: int):
     return row
 
 
+# How long a run may sit in 'running' before its worker is presumed
+# dead. Generous, because a legitimate mcts128 sweep is slow — this is a
+# crash recovery, not a latency budget.
+STALE_CLAIM = "45 minutes"
+
+
 @router.post("/sim/runs/claim")
 def claim_run(body: ClaimIn):
     """Atomically hand the oldest queued run to a worker. SKIP LOCKED
     keeps two workers from claiming the same row; returns null (204-ish
-    empty body) when the queue is empty."""
+    empty body) when the queue is empty.
+
+    First, requeue anything whose worker died holding it. SKIP LOCKED
+    stops two workers taking one run, but nothing releases a run whose
+    worker vanished mid-flight — and a rollout does exactly that to
+    whatever was claimed seconds earlier. Such a row sits in 'running'
+    forever, indistinguishable from a slow run, and is invisible in the
+    UI as anything but "still going".
+    """
+    # db.execute, NOT db.query: query() fetchall()s, and an UPDATE with
+    # no RETURNING produces no records, so it raises — which took the
+    # whole claim endpoint down and stalled every worker poll.
+    db.execute(
+        """UPDATE sim_deck_runs SET status='queued', claimed_at=NULL, worker=NULL
+           WHERE status='running' AND claimed_at < now() - %s::interval""",
+        (STALE_CLAIM,))
     return db.query_one(
         f"""UPDATE sim_deck_runs SET status='running', claimed_at=now(), worker=%s
             WHERE id = (SELECT id FROM sim_deck_runs WHERE status='queued'

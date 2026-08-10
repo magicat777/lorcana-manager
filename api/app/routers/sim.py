@@ -250,6 +250,31 @@ class CoverageIn(BaseModel):
     covered: list[dict]        # [{set_code, collector_number}, ...]
 
 
+class AnalysisIn(BaseModel):
+    analysis: dict
+
+
+@router.post("/sim/runs/{run_id}/analysis")
+def put_analysis(run_id: int, body: AnalysisIn):
+    """Replace ONE finished run's analysis, leaving its record alone.
+
+    Backfill path: the turn tape and aggregates were added after these
+    runs finished, and they are regenerable from the seed. This exists
+    so a backfill cannot touch wins/losses/status — only the derived
+    material hangs off it. A run that never finished has nothing to
+    describe, so it is refused rather than silently annotated.
+    """
+    import json as _json
+
+    updated = db.query_one(
+        f"""UPDATE sim_deck_runs SET analysis=%s
+            WHERE id=%s AND status='complete' RETURNING {RUN_COLS}""",
+        (_json.dumps(body.analysis), run_id))
+    if not updated:
+        raise HTTPException(404, "no such completed run")
+    return updated
+
+
 @router.post("/sim/coverage")
 def put_coverage(body: CoverageIn):
     """Replace the coverage manifest. Full replacement, one

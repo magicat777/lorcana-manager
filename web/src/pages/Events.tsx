@@ -21,8 +21,11 @@ export default function Events() {
   })
   const nav = useNavigate()
 
-  useEffect(() => {
+  const loadEvents = () =>
     get<EventRow[]>('/events').then(setEvents).catch((e) => setError(String(e)))
+
+  useEffect(() => {
+    loadEvents()
     get<Deck[]>('/decks').then(setDecks).catch(() => {})
     get<Venue[]>('/venues').then(setVenues).catch(() => {})
   }, [])
@@ -60,7 +63,7 @@ export default function Events() {
 
       <table>
         <thead>
-          <tr><th>Date</th><th>Store</th><th>Deck</th><th>Record</th><th>Rounds</th><th>Packs</th><th></th></tr>
+          <tr><th>Date</th><th>Store</th><th>Deck</th><th>Record</th><th>Rounds</th><th>Packs</th><th></th><th></th></tr>
         </thead>
         <tbody>
           {events.map((e) => (
@@ -72,9 +75,33 @@ export default function Events() {
               <td>{e.match_count}/{e.rounds ?? '?'}</td>
               <td>{e.packs_won ?? '—'}{e.promo ? ' +promo' : ''}</td>
               <td><Link to={`/matches/${e.id}`}>open</Link></td>
+              <td>
+                <button
+                  type="button"
+                  className="togglebtn"
+                  onClick={async () => {
+                    // Events cascade to their matches and observations
+                    // (005_match_log.sql), so this takes the whole
+                    // event's round-by-round log with it. Say so.
+                    const rounds = e.match_count
+                      ? ` and its ${e.match_count} logged round${e.match_count === 1 ? '' : 's'}`
+                      : ''
+                    if (!confirm(`Delete the ${e.date} event at ${e.store}${rounds}? This cannot be undone.`))
+                      return
+                    try {
+                      await send('DELETE', `/events/${e.id}`)
+                      loadEvents()
+                    } catch (err) {
+                      setError(String(err))
+                    }
+                  }}
+                >
+                  delete
+                </button>
+              </td>
             </tr>
           ))}
-          {events.length === 0 && <tr><td colSpan={7} className="muted">No events logged yet.</td></tr>}
+          {events.length === 0 && <tr><td colSpan={8} className="muted">No events logged yet.</td></tr>}
         </tbody>
       </table>
 

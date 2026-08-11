@@ -165,6 +165,7 @@ export default function Sim() {
       <table className="grid" style={{ marginTop: '1rem' }}>
         <thead>
           <tr>
+            <th>Run</th>
             <th>Deck</th>
             <th>Opponent</th>
             <th>Status</th>
@@ -180,6 +181,9 @@ export default function Sim() {
         <tbody>
           {runs.map((r) => (
             <tr key={r.id}>
+              <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                #{r.id}
+              </td>
               <td>
                 <Link to={`/decks/${r.deck_id}`}>{r.deck_name ?? r.deck_id}</Link>
               </td>

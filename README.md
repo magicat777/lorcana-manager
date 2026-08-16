@@ -2,7 +2,7 @@
 
 Disney Lorcana TCG card database + collection manager on the ODIN k3s cluster.
 
-- **Web UI:** http://192.168.1.154:30710 — browse cards, upload Dreamborn.ink exports,
+- **Web UI:** http://jason-holt-blade-18-rz09-0484.local:30710 — browse cards, upload Dreamborn.ink exports,
   decks, stats.
 - **API:** FastAPI behind the same NodePort under `/api` (nginx same-origin proxy).
 - **DB:** database `lorcana` on the shared odin-prime PostgreSQL

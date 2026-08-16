@@ -19,7 +19,10 @@ def _action_label(title: str) -> str:
 
 
 def _ntfy_headers(b: dict) -> dict:
-    web = os.getenv("LORCANA_WEB_URL", "http://192.168.1.154:30710").rstrip("/")
+    # mDNS name, not a literal IP: the host is on wifi DHCP and its lease
+    # has already moved once, which silently deadened every link in the
+    # brief. The .local name follows the lease.
+    web = os.getenv("LORCANA_WEB_URL", "http://jason-holt-blade-18-rz09-0484.local:30710").rstrip("/")
     headers = {"Title": "Lorcana Brief", "Tags": "black_joker",
                "Click": f"{web}/brief"}
     actions = [f'view, "{_action_label(n["title"])}", {n["url"]}'

@@ -104,10 +104,10 @@ lorcana/
 
 | Thing | Value |
 |---|---|
-| Web UI / API entry | `http://192.168.1.154:30710` (API under `/api`) |
-| Health check | `GET http://192.168.1.154:30710/api/health` |
-| pgAdmin | `http://192.168.1.154:30880` |
-| MCP server (Claude) | `http://192.168.1.154:30720/mcp` (odin-mcp, HTTP transport) |
+| Web UI / API entry | `http://jason-holt-blade-18-rz09-0484.local:30710` (API under `/api`) |
+| Health check | `GET http://jason-holt-blade-18-rz09-0484.local:30710/api/health` |
+| pgAdmin | `http://jason-holt-blade-18-rz09-0484.local:30880` |
+| MCP server (Claude) | `http://jason-holt-blade-18-rz09-0484.local:30720/mcp` (odin-mcp, HTTP transport) |
 | Namespace | `lorcana` (Postgres in `odin-prime`) |
 | Database | `lorcana` @ `postgresql.odin-prime.svc.cluster.local:5432`, role `lorcana` |
 | Container registry | `localhost:30500` |
@@ -287,7 +287,7 @@ on the phone.
 ### 4.5 MCP side (odin-mcp)
 
 - `ODIN_LORCANA_URL` (default `http://$ODIN_NODE:30710`, node default
-  `192.168.1.154`) — the MCP talks to the same NodePort/nginx proxy as the
+  `jason-holt-blade-18-rz09-0484.local`) — the MCP talks to the same NodePort/nginx proxy as the
   browser. No separate credentials.
 - Lorcana tools live in one file:
   `odin-mcp/odin_mcp/tools/lorcana.py`. Deploying a change = rebuild odin-mcp
@@ -474,7 +474,7 @@ The importer resolves a file's set label via `set_aliases` first, then numeric
 
 | Symptom | Check / fix |
 |---|---|
-| Web UI up but every page errors | `curl http://192.168.1.154:30710/api/health` — if not `{"status":"ok"}`, the API can't reach Postgres. `kubectl -n lorcana logs deploy/lorcana-api`; check odin-prime Postgres is up. |
+| Web UI up but every page errors | `curl http://jason-holt-blade-18-rz09-0484.local:30710/api/health` — if not `{"status":"ok"}`, the API can't reach Postgres. `kubectl -n lorcana logs deploy/lorcana-api`; check odin-prime Postgres is up. |
 | 502 from `/api/` | API pod down/not-ready (nginx is designed to 502 rather than crash). `kubectl -n lorcana get pods`, check readiness probe (it needs a working DB). |
 | Upload rejected 413 | File over 10 MiB (nginx and API both cap). Split the export. |
 | Upload 409 "already merged" | Duplicate-file guard on **merge** mode (same sha256 as a previous non-dry-run import). Use the "Merge anyway" button (force) or Replace mode, which is idempotent and never blocked. |
@@ -495,7 +495,7 @@ Logs land in Loki with `ai.odin.loki.app_category: lorcana`.
 
 ## 9. Web UI user guide
 
-Base URL `http://192.168.1.154:30710`. Nav bar: **Cards · Stats · Decks ·
+Base URL `http://jason-holt-blade-18-rz09-0484.local:30710`. Nav bar: **Cards · Stats · Decks ·
 Matches · Brief · Upload**.
 
 **Install on your phone**: open the site in Safari/Chrome and *Add to Home
@@ -668,7 +668,7 @@ items).
 ## 10. Claude / MCP tools
 
 The `lorcana` domain in odin-mcp (`odin_mcp/tools/lorcana.py`) exposes the
-whole system to Claude at `http://192.168.1.154:30720/mcp`. Deck-building
+whole system to Claude at `http://jason-holt-blade-18-rz09-0484.local:30720/mcp`. Deck-building
 advice is grounded in actually-owned/free copies; the match log is designed to
 be dictated conversationally between rounds.
 

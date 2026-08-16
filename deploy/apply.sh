@@ -65,6 +65,6 @@ kubectl -n "$NS" rollout status deploy/lorcana-web --timeout=180s
 cat <<EOF
 
 Done.
-  Web UI:     http://192.168.1.154:30710
+  Web UI:     http://jason-holt-blade-18-rz09-0484.local:30710
   Seed cards: kubectl -n $NS delete job lorcana-seed --ignore-not-found && kubectl apply -f jobs/seed-job.yaml
 EOF

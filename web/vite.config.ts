@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       // dev-only: point /api at the deployed API through the web NodePort
-      '/api': { target: 'http://192.168.1.154:30710', changeOrigin: true },
+      '/api': { target: 'http://jason-holt-blade-18-rz09-0484.local:30710', changeOrigin: true },
     },
   },
 })

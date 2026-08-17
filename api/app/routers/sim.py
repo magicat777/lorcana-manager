@@ -72,7 +72,8 @@ def latest():
 RUN_COLS = """id, deck_id, opponent, opponent_label, games, policy, seed_base,
   status, requested_by, requested_at, claimed_at, finished_at, worker,
   engine_build, wins, losses, win_rate, avg_turns, wins_as_p0, wins_as_p1,
-  elapsed_s, error, unsupported_cards, analyze_requested, analysis"""
+  elapsed_s, error, unsupported_cards, analyze_requested, analysis,
+  opponent_policy, outcomes, require_build"""
 
 POLICIES = ("heuristic", "random", "mcts16", "mcts32", "mcts64", "mcts128")
 
@@ -87,6 +88,14 @@ class SimRequestIn(BaseModel):
     # shuffles and opening hands, so the difference between them is the
     # decklist change and not the luck. Set by "compare to this run".
     seed_base: int | None = None
+    # Which bot pilots the OPPONENT. Defaults to `policy` (both sides the
+    # same). Not cosmetic: the 2026-08-16 calibration moved the win rate
+    # 100% -> 62% -> 50% purely by strengthening this, so a result is
+    # uninterpretable without it.
+    opponent_policy: str | None = None
+    # Refuse to run unless the worker is this engine build, so both arms
+    # of a paired comparison are guaranteed to share rules code.
+    require_build: str | None = None
 
 
 class ClaimIn(BaseModel):
@@ -102,6 +111,9 @@ class SimResultIn(BaseModel):
     engine_build: str | None = None
     seed_base: int | None = None
     games: int | None = None
+    policy_you: str | None = None
+    policy_opponent: str | None = None
+    outcomes: str | None = None
     wins: int | None = None
     losses: int | None = None
     win_rate: float | None = None
@@ -120,6 +132,8 @@ def queue_sim(deck_id: int, body: SimRequestIn):
         raise HTTPException(404, "no such deck")
     if body.policy not in POLICIES:
         raise HTTPException(422, f"policy must be one of {', '.join(POLICIES)}")
+    if body.opponent_policy is not None and body.opponent_policy not in POLICIES:
+        raise HTTPException(422, f"opponent_policy must be one of {', '.join(POLICIES)}")
     if body.opponent not in ("deck2", "deck3"):
         # An opponent deck id must exist and not be the deck itself.
         if not body.opponent.isdigit():
@@ -148,6 +162,51 @@ def list_runs(deck_id: int | None = None, limit: int = 25):
         [*params, min(limit, 100)])
 
 
+
+def wilson_ci(wins: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    """95% Wilson score interval for a proportion.
+
+    Wilson rather than the normal approximation: at n=60 with p near 0
+    or 1 the normal approximation produces intervals that run past 0%
+    or 100%, which is exactly the regime these runs live in.
+    """
+    if not n:
+        return None
+    import math
+    p_hat = wins / n
+    d = 1 + z * z / n
+    c = (p_hat + z * z / (2 * n)) / d
+    h = z * math.sqrt(p_hat * (1 - p_hat) / n + z * z / (4 * n * n)) / d
+    return (round(max(0.0, c - h), 4), round(min(1.0, c + h), 4))
+
+
+def mcnemar(a_out: str, b_out: str) -> dict | None:
+    """Exact McNemar on two PAIRED per-game outcome vectors.
+
+    Pairing means game i of run A and game i of run B saw the same
+    shuffle, so the informative quantity is the DISAGREEMENTS: b games
+    A won and B lost, c games A lost and B won. Games both runs agreed
+    on carry no information about which decklist is better, which is
+    why comparing totals alone wastes most of the pairing.
+    """
+    if not a_out or not b_out or len(a_out) != len(b_out):
+        return None
+    b = sum(1 for x, y in zip(a_out, b_out) if x == "W" and y == "L")
+    c = sum(1 for x, y in zip(a_out, b_out) if x == "L" and y == "W")
+    n = b + c
+    if n == 0:
+        return {"flips_a_to_b": 0, "flips_b_to_a": 0, "discordant": 0,
+                "p_value": 1.0, "significant": False,
+                "note": "the two runs agreed on every game — no evidence of a difference"}
+    from math import comb
+    # two-sided exact binomial on the discordant pairs, H0: p = 0.5
+    k = min(b, c)
+    tail = sum(comb(n, i) for i in range(0, k + 1)) / (2 ** n)
+    p_value = min(1.0, 2 * tail)
+    return {"flips_a_to_b": b, "flips_b_to_a": c, "discordant": n,
+            "p_value": round(p_value, 4), "significant": p_value < 0.05}
+
+
 @router.get("/sim/compare")
 def compare(a: int, b: int):
     """Two finished runs side by side. When they share a seed_base,
@@ -169,7 +228,31 @@ def compare(a: int, b: int):
     delta = None
     if ra["win_rate"] is not None and rb["win_rate"] is not None:
         delta = float(rb["win_rate"]) - float(ra["win_rate"])
-    return {"a": ra, "b": rb, "paired": paired, "win_rate_delta": delta}
+
+    # Same rules code? Pairing controls the shuffles; it does NOT control
+    # the engine. Two runs on different builds can differ because the
+    # rules changed, which is exactly what pairing was meant to exclude.
+    same_build = ra.get("engine_build") == rb.get("engine_build")
+    # Same pilots? A win rate moves ~50 points on opponent policy alone.
+    same_pilots = (
+        (ra.get("policy"), ra.get("opponent_policy") or ra.get("policy"))
+        == (rb.get("policy"), rb.get("opponent_policy") or rb.get("policy"))
+    )
+    comparable = bool(paired and same_build and same_pilots)
+    return {
+        "a": ra, "b": rb, "paired": paired,
+        "same_build": same_build, "same_pilots": same_pilots,
+        "comparable": comparable,
+        # Only state a delta when the comparison can actually support
+        # one. An unpaired/cross-build delta is mostly noise, and
+        # reporting it as a number invites it being quoted as fact.
+        "win_rate_delta": delta if comparable else None,
+        "win_rate_delta_unreliable": None if comparable else delta,
+        "a_ci": wilson_ci(ra["wins"] or 0, ra["games"] or 0),
+        "b_ci": wilson_ci(rb["wins"] or 0, rb["games"] or 0),
+        "paired_test": mcnemar(ra.get("outcomes") or "", rb.get("outcomes") or "")
+        if comparable else None,
+    }
 
 
 @router.get("/sim/runs/{run_id}")
@@ -225,6 +308,7 @@ def post_result(run_id: int, body: SimResultIn):
               status=%s, finished_at=now(), error=%s, unsupported_cards=%s,
               opponent_label=COALESCE(%s, opponent_label),
               policy=COALESCE(%s, policy), engine_build=%s, seed_base=%s,
+              opponent_policy=COALESCE(%s, opponent_policy), outcomes=%s,
               games=COALESCE(%s, games), wins=%s, losses=%s, win_rate=%s,
               avg_turns=%s, wins_as_p0=%s, wins_as_p1=%s, elapsed_s=%s,
               analysis=%s
@@ -232,6 +316,7 @@ def post_result(run_id: int, body: SimResultIn):
         (body.status, body.error,
          _json.dumps(body.unsupported_cards) if body.unsupported_cards else None,
          body.opponent_label, body.policy, body.engine_build, body.seed_base,
+         body.policy_opponent, body.outcomes,
          body.games, body.wins, body.losses, body.win_rate, body.avg_turns,
          body.wins_as_p0, body.wins_as_p1, body.elapsed_s,
          _json.dumps(body.analysis) if body.analysis else None, run_id))

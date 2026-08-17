@@ -141,11 +141,44 @@ def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
 @router.get("/decks")
 def list_decks():
     return db.query(
-        """SELECT d.id, d.name, d.notes, d.in_use, d.format, d.sim_only, d.updated_at,
-                  COALESCE(sum(dc.qty), 0) AS card_total
+        """SELECT d.id, d.name, d.notes, d.in_use, d.format, d.sim_only, d.strategy,
+                  d.updated_at, d.wanted,
+                  COALESCE(sum(dc.qty), 0) AS card_total,
+                  (SELECT array_agg(DISTINCT x.ink ORDER BY x.ink)
+                   FROM deck_cards dc2
+                   JOIN cards c2 ON c2.id = dc2.card_id,
+                        LATERAL unnest(COALESCE(c2.inks, ARRAY[c2.ink])) AS x(ink)
+                   WHERE dc2.deck_id = d.id AND x.ink IS NOT NULL) AS inks
            FROM decks d LEFT JOIN deck_cards dc ON dc.deck_id = d.id
            GROUP BY d.id ORDER BY d.in_use DESC, d.name"""
     )
+
+
+class DeckMetaIn(BaseModel):
+    strategy: str | None = None
+    notes: str | None = None
+
+
+@router.patch("/decks/{deck_id}/meta")
+def update_deck_meta(deck_id: int, body: DeckMetaIn):
+    """Inline edits from the deck list table — strategy/notes only, no card
+    changes (PUT /decks/{id} stays the full-update path). Omitted fields keep
+    their value; sending an empty string clears the field."""
+    if body.strategy is None and body.notes is None:
+        raise HTTPException(422, "nothing to update")
+    row = db.query_one(
+        """UPDATE decks
+           SET strategy = CASE WHEN %(s)s::text IS NULL THEN strategy
+                               ELSE NULLIF(trim(%(s)s), '') END,
+               notes    = CASE WHEN %(n)s::text IS NULL THEN notes
+                               ELSE NULLIF(trim(%(n)s), '') END,
+               updated_at = now()
+           WHERE id = %(id)s RETURNING id, strategy, notes""",
+        {"s": body.strategy, "n": body.notes, "id": deck_id},
+    )
+    if not row:
+        raise HTTPException(404, "no such deck")
+    return row
 
 
 @router.post("/decks", status_code=201)

@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
+import { InkDots } from '../components/CardGrid'
 import type { AllocationConflict, Deck } from '../types'
+
+const STRATEGIES = ['Aggro', 'Rush', 'Midrange', 'Tempo', 'Control', 'Combo',
+  'Ramp', 'Damage', 'Mill', 'Toolbox', 'Other']
 
 export default function Decks() {
   const [decks, setDecks] = useState<Deck[]>([])
@@ -29,6 +33,17 @@ export default function Decks() {
     }
   }
 
+  const saveMeta = async (id: number, patch: { strategy?: string; notes?: string }) => {
+    try {
+      const r = await send<{ id: number; strategy: string | null; notes: string | null }>(
+        'PATCH', `/decks/${id}/meta`, patch)
+      setDecks((ds) => ds.map((d) =>
+        d.id === id ? { ...d, strategy: r.strategy, notes: r.notes } : d))
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const importDeck = async () => {
     if (!name.trim() || !text.trim()) return
     try {
@@ -40,7 +55,7 @@ export default function Decks() {
   }
 
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 1300 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1>Decks</h1>
         <Link to="/wantlist">Want list →</Link>
@@ -65,36 +80,70 @@ export default function Decks() {
           </p>
         </div>
       )}
-      <div className="deckgrid">
-        {decks.map((d) => (
-          <Link key={d.id} to={`/decks/${d.id}`} className="panel" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <h3 style={{ margin: 0 }}>
-              {d.name}
-              {d.format === 'sealed' && <span className="badge" style={{ marginLeft: 8 }}>SEALED</span>}
-              {d.sim_only && <span className="badge" style={{ marginLeft: 8 }} title="Opponent deck for simulations — not owned">SIM</span>}
-              {d.in_use && <span className="badge foil" style={{ marginLeft: 8 }}>◈ built</span>}
-              {d.wanted && !d.in_use && <span className="badge" style={{ marginLeft: 8 }}>★ want</span>}
-            </h3>
-            <p className="muted" style={{ margin: '0.3rem 0 0' }}>
-              {d.card_total} cards{d.notes ? ` · ${d.notes}` : ''}
-              {d.card_total > 0 && (
-                <span
-                  role="button"
-                  title="Download Dreamborn-compatible CSV"
-                  style={{ float: 'right', cursor: 'pointer', textDecoration: 'underline' }}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    window.location.href = `/api/decks/${d.id}/export.csv`
-                  }}
-                >
-                  ⬇ CSV
-                </span>
-              )}
-            </p>
-          </Link>
-        ))}
-        {decks.length === 0 && <p className="muted">No decks yet.</p>}
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Deck</th><th>Type</th><th>Cards</th><th>Colors</th>
+              <th>Strategy</th><th style={{ minWidth: '50ch' }}>Notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {decks.map((d) => (
+              <tr key={d.id}>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <Link to={`/decks/${d.id}`}><strong>{d.name}</strong></Link>
+                  {d.in_use && <span className="badge foil" style={{ marginLeft: 6 }}>◈ built</span>}
+                  {d.wanted && !d.in_use && <span className="badge" style={{ marginLeft: 6 }}>★ want</span>}
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {d.sim_only ? 'sim' : d.format}
+                  {d.sim_only && d.format === 'sealed' && ' · sealed'}
+                </td>
+                <td>{d.card_total}</td>
+                <td style={{ whiteSpace: 'nowrap' }} title={(d.inks ?? []).join(' / ')}>
+                  <InkDots ink={null} inks={d.inks ?? []} />
+                </td>
+                <td>
+                  <select
+                    value={d.strategy ?? ''}
+                    onChange={(e) => saveMeta(d.id, { strategy: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {STRATEGIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {d.strategy && !STRATEGIES.includes(d.strategy) && (
+                      <option value={d.strategy}>{d.strategy}</option>
+                    )}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    defaultValue={d.notes ?? ''}
+                    placeholder="notes…"
+                    style={{ width: '100%', minWidth: '50ch' }}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== (d.notes ?? '').trim())
+                        saveMeta(d.id, { notes: e.target.value })
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                    }}
+                  />
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {d.card_total > 0 && (
+                    <a href={`/api/decks/${d.id}/export.csv`}
+                      title="Download Dreamborn-compatible CSV">⬇ CSV</a>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {decks.length === 0 && (
+              <tr><td colSpan={7} className="muted">No decks yet.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="panel" style={{ marginTop: '1.5rem' }}>

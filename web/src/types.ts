@@ -194,6 +194,8 @@ export interface Deck {
   in_use: boolean
   wanted?: boolean
   sim_only?: boolean
+  strategy?: string | null
+  inks?: string[] | null
   format: 'constructed' | 'sealed'
   updated_at: string
   card_total: number

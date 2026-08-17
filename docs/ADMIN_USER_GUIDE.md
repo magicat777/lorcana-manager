@@ -408,15 +408,46 @@ kubectl -n lorcana get secret lorcana-db -o jsonpath='{.data.PGPASSWORD}' | base
 Or browse via pgAdmin at `:30880` (server: `postgresql.odin-prime.svc`, db
 `lorcana`, role `lorcana`).
 
-**Backup / restore:**
+**Backups (automated):** the `lorcana-db-backup` CronJob
+(`deploy/jobs/db-backup-cronjob.yaml`) runs nightly at 02:00 PT and writes a
+compressed `pg_dump -Fc` to **`/mnt/lvm_k3s/backups/lorcana/`** on the host —
+a hostPath outside every PVC/namespace lifecycle, so deleting k8s objects
+cannot take the dumps with it. Each run verifies the dump (size + `pg_restore
+--list` table count) *before* pruning anything, keeps 30 days, and pushes an
+ntfy alert on failure (via the optional `lorcana-ntfy` secret). Run one now:
 
 ```bash
-kubectl -n odin-prime exec deploy/postgresql -- \
-  pg_dump -U lorcana -d lorcana --no-owner | gzip > lorcana-$(date +%F).sql.gz
-
-gunzip -c lorcana-YYYY-MM-DD.sql.gz | \
-  kubectl -n odin-prime exec -i deploy/postgresql -- psql -U lorcana -d lorcana
+kubectl -n lorcana create job bk-now --from=cronjob/lorcana-db-backup
+kubectl -n lorcana logs -f job/bk-now
 ```
+
+**Restore** (verified 2026-08-17 — restores to identical row counts). To
+inspect a dump or recover data without touching the live DB, restore into a
+scratch database first:
+
+```bash
+DUMP=/mnt/lvm_k3s/backups/lorcana/lorcana-YYYYMMDD-HHMMSS.dump
+kubectl -n odin-prime exec deploy/postgresql -- \
+  psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE lorcana_restore_test"
+kubectl -n odin-prime exec -i deploy/postgresql -- \
+  pg_restore -U "$POSTGRES_USER" -d lorcana_restore_test --no-owner < "$DUMP"
+# ...inspect / copy rows across, then:
+kubectl -n odin-prime exec deploy/postgresql -- \
+  psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE lorcana_restore_test"
+```
+
+Full disaster restore (replaces the live DB — scale the API down first):
+
+```bash
+kubectl -n lorcana scale deploy/lorcana-api --replicas=0
+kubectl -n odin-prime exec -i deploy/postgresql -- \
+  pg_restore -U "$POSTGRES_USER" -d lorcana --clean --if-exists --no-owner < "$DUMP"
+kubectl -n lorcana scale deploy/lorcana-api --replicas=1
+```
+
+Off-host copies remain a manual step: `/mnt/lvm_k3s/backups/lorcana/` is on
+the same machine as the database, so sync it to another box (rsync/cloud) if
+you want protection against disk loss, not just bad writes.
 
 The catalog is always recoverable from Lorcast via the seed job; the
 irreplaceable data is `collection`, `decks`/`deck_cards`, the match log

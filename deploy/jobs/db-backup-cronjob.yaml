@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lorcana-db-backup
+  namespace: lorcana
+  labels:
+    app: lorcana-db-backup
+    ai.odin.managed: "true"
+    ai.odin.component: db-backup
+spec:
+  schedule: "0 9 * * *"   # 09:00 UTC = 02:00 PDT nightly
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: lorcana-db-backup
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              # The odin-prime postgres image so pg_dump matches the server
+              # version exactly; also ships curl for the failure alert.
+              image: localhost:30500/odin-prime/postgresql:odin-latest
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0   # hostPath dir is root-owned
+              command:
+                - sh
+                - -ec
+                - |
+                  fail() {
+                    echo "BACKUP FAILED: $1" >&2
+                    if [ -n "${LORCANA_NTFY_URL:-}" ]; then
+                      curl -s -m 15 -H "Title: Lorcana DB backup FAILED" \
+                        -H "Tags: rotating_light" -d "$1" "$LORCANA_NTFY_URL" || true
+                    fi
+                    exit 1
+                  }
+                  ts=$(date -u +%Y%m%d-%H%M%S)
+                  f="/backup/lorcana-$ts.dump"
+                  pg_dump "$DATABASE_URL" -Fc -f "$f" || fail "pg_dump exited nonzero"
+                  size=$(stat -c%s "$f")
+                  [ "$size" -gt 100000 ] || fail "dump suspiciously small: $size bytes"
+                  tables=$(pg_restore --list "$f" | grep -c "TABLE DATA" || true)
+                  [ "$tables" -ge 10 ] || fail "only $tables table-data entries in dump"
+                  echo "wrote $f ($size bytes, $tables tables)"
+                  # Retention: prune AFTER the new dump verified, never before.
+                  find /backup -name 'lorcana-*.dump' -mtime +30 -delete
+                  echo "kept: $(ls /backup/lorcana-*.dump | wc -l) dumps"
+                  ls -lh /backup | tail -4
+              envFrom:
+                - secretRef:
+                    name: lorcana-db
+                - secretRef:
+                    name: lorcana-ntfy
+                    optional: true
+              volumeMounts:
+                - name: backups
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: backups
+              hostPath:
+                # On the k3s LVM volume, outside any PVC lifecycle — deleting
+                # k8s objects (even the namespace) cannot take the dumps with it.
+                path: /mnt/lvm_k3s/backups/lorcana
+                type: DirectoryOrCreate

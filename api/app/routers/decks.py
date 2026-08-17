@@ -1,4 +1,8 @@
-from fastapi import APIRouter, HTTPException
+import csv
+import io
+import re
+
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -480,6 +484,29 @@ def export_deck(deck_id: int):
         "not_core_legal": not_core_legal,
         "core_legal": not not_core_legal and not deck["validation"],
     }
+
+
+@router.get("/decks/{deck_id}/export.csv")
+def export_deck_csv(deck_id: int):
+    """Dreamborn.ink-compatible CSV (the variant-row schema Dreamborn itself
+    exports: Set Number, Card Number, Variant, Count, Name, Color, Rarity), so
+    the file imports straight back into Dreamborn — and into our own Upload
+    page. Decks don't track foils, so every row is Variant=normal."""
+    deck = _deck_row(deck_id)
+    cards = sorted(deck["cards"], key=lambda c: (c["cost"] or 0, c["full_name"]))
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Set Number", "Card Number", "Variant", "Count", "Name", "Color", "Rarity"])
+    for c in cards:
+        color = "/".join(c.get("inks") or ([c["ink"]] if c.get("ink") else []))
+        w.writerow([c["set_code"], c["collector_number"], "normal", c["qty"],
+                    c["full_name"], color, c.get("rarity") or ""])
+    slug = re.sub(r"[^a-z0-9]+", "-", deck["name"].lower()).strip("-") or "deck"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{slug}.csv"'},
+    )
 
 
 class WantedIn(BaseModel):

@@ -77,6 +77,20 @@ export default function Decks() {
             </h3>
             <p className="muted" style={{ margin: '0.3rem 0 0' }}>
               {d.card_total} cards{d.notes ? ` · ${d.notes}` : ''}
+              {d.card_total > 0 && (
+                <span
+                  role="button"
+                  title="Download Dreamborn-compatible CSV"
+                  style={{ float: 'right', cursor: 'pointer', textDecoration: 'underline' }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    window.location.href = `/api/decks/${d.id}/export.csv`
+                  }}
+                >
+                  ⬇ CSV
+                </span>
+              )}
             </p>
           </Link>
         ))}

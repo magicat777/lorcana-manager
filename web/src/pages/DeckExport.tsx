@@ -69,6 +69,10 @@ export default function DeckExport() {
         <button onClick={() => window.print()}>🖨 Print sheet</button>
         <button className="secondary" onClick={copyList}>{copied ? '✓ Copied' : 'Copy text list'}</button>
         <button className="secondary" onClick={downloadTxt}>Download .txt</button>
+        <button className="secondary" title="Dreamborn-compatible CSV"
+          onClick={() => { window.location.href = `/api/decks/${d.deck_id}/export.csv` }}>
+          Download .csv
+        </button>
       </div>
 
       <h1 style={{ marginBottom: 0 }}>Deck List — {d.name}</h1>

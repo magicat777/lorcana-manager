@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
 import { InkDots } from '../components/CardGrid'
@@ -17,6 +18,42 @@ export default function Decks() {
   const nav = useNavigate()
 
   const [conflicts, setConflicts] = useState<AllocationConflict[]>([])
+  const [sortKey, setSortKey] = useState('')
+  const [sortDir, setSortDir] = useState(1)
+
+  const clickSort = (key: string) => {
+    if (sortKey === key) setSortDir(-sortDir)
+    else {
+      setSortKey(key)
+      setSortDir(1)
+    }
+  }
+  const SortTh = ({ k, label, style }: { k: string; label: string; style?: CSSProperties }) => (
+    <th onClick={() => clickSort(k)}
+      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...style }}
+      title="Click to sort">
+      {label}{sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : ''}
+    </th>
+  )
+  const sortedDecks = (() => {
+    if (!sortKey) return decks
+    const str = (v: string | null | undefined) => (v ?? '').toLowerCase()
+    return [...decks].sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'id': cmp = a.id - b.id; break
+        case 'name': cmp = str(a.name).localeCompare(str(b.name)); break
+        case 'type':
+          cmp = str(a.sim_only ? 'sim' : a.format).localeCompare(str(b.sim_only ? 'sim' : b.format))
+          break
+        case 'cards': cmp = a.card_total - b.card_total; break
+        case 'colors': cmp = (a.inks ?? []).join('/').localeCompare((b.inks ?? []).join('/')); break
+        case 'strategy': cmp = str(a.strategy).localeCompare(str(b.strategy)); break
+        case 'notes': cmp = str(a.notes).localeCompare(str(b.notes)); break
+      }
+      return sortDir * (cmp || a.name.localeCompare(b.name))
+    })
+  })()
 
   useEffect(() => {
     get<Deck[]>('/decks').then(setDecks).catch((e) => setError(String(e)))
@@ -84,13 +121,20 @@ export default function Decks() {
         <table>
           <thead>
             <tr>
-              <th>Deck</th><th>Type</th><th>Cards</th><th>Colors</th>
-              <th>Strategy</th><th style={{ minWidth: '50ch' }}>Notes</th><th></th>
+              <SortTh k="id" label="#" />
+              <SortTh k="name" label="Deck" />
+              <SortTh k="type" label="Type" />
+              <SortTh k="cards" label="Cards" />
+              <SortTh k="colors" label="Colors" />
+              <SortTh k="strategy" label="Strategy" />
+              <SortTh k="notes" label="Notes" style={{ minWidth: '50ch' }} />
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {decks.map((d) => (
+            {sortedDecks.map((d) => (
               <tr key={d.id}>
+                <td className="muted">{d.id}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <Link to={`/decks/${d.id}`}><strong>{d.name}</strong></Link>
                   {d.in_use && <span className="badge foil" style={{ marginLeft: 6 }}>◈ built</span>}
@@ -140,7 +184,7 @@ export default function Decks() {
               </tr>
             ))}
             {decks.length === 0 && (
-              <tr><td colSpan={7} className="muted">No decks yet.</td></tr>
+              <tr><td colSpan={8} className="muted">No decks yet.</td></tr>
             )}
           </tbody>
         </table>

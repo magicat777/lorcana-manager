@@ -144,9 +144,11 @@ export interface SnapshotRow {
   source: 'daily' | 'import' | 'manual'
   import_id: number | null
   total_cards: number
-  unique_cards: number
-  value_usd: string | number
-  breakdown: Record<'rarity' | 'ink' | 'set' | 'type' | 'cost', Record<string, SnapshotBucket>>
+  // Backfilled pre-feature rows (reconstructed from the imports audit trail)
+  // only know total copies — value/unique/breakdown are null there.
+  unique_cards: number | null
+  value_usd: string | number | null
+  breakdown: Record<'rarity' | 'ink' | 'set' | 'type' | 'cost', Record<string, SnapshotBucket>> | null
   import_note: string | null
   import_filename: string | null
 }

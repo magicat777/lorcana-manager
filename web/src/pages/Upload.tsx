@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { get, send, upload } from '../api'
-import type { ImportDiff, ImportHistoryRow, ImportReport } from '../types'
+import type { Deck, ImportDiff, ImportHistoryRow, ImportReport } from '../types'
 
 const DIFF_DISPLAY_CAP = 60
 
@@ -16,6 +16,59 @@ function DiffSummaryLine({ s }: { s: ImportDiff['summary'] }) {
         {s.removed_cards > 0 && `, ${s.removed_cards} zeroed`})
       </span>
     </span>
+  )
+}
+
+function DiffActions({ diff, importId, sealedDecks }: {
+  diff: ImportDiff
+  importId: number
+  sealedDecks: Deck[]
+}) {
+  const [deckId, setDeckId] = useState<number | ''>('')
+  const [status, setStatus] = useState('')
+  const added = diff.cards.filter((c) => c.delta > 0)
+  if (!added.length) return null
+
+  const copyAdded = () => {
+    const text = added.map((c) => `${c.delta} ${c.full_name}`).join('\n')
+    navigator.clipboard.writeText(text).then(
+      () => setStatus(`Copied ${added.length} added cards`),
+      () => setStatus('Clipboard unavailable'),
+    )
+  }
+
+  const toPool = async () => {
+    if (deckId === '') return
+    try {
+      const r = await send<{ deck_name: string; cards: number; copies: number }>(
+        'POST', `/imports/${importId}/to-pool`, { deck_id: deckId })
+      setStatus(`Added ${r.copies} copies (${r.cards} cards) to "${r.deck_name}" pool`)
+    } catch (e) {
+      setStatus(String((e as Error).message ?? e))
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap',
+      margin: '0.4rem 0' }}>
+      <button className="secondary" onClick={copyAdded}>
+        ⧉ Copy {added.length} added card{added.length === 1 ? '' : 's'}
+      </button>
+      {sealedDecks.length > 0 && (
+        <>
+          <select value={deckId} onChange={(e) => setDeckId(e.target.value === '' ? '' : Number(e.target.value))}>
+            <option value="">sealed deck…</option>
+            {sealedDecks.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+          <button className="secondary" disabled={deckId === ''} onClick={toPool}>
+            → Add to sealed pool
+          </button>
+        </>
+      )}
+      {status && <span className="muted">{status}</span>}
+    </div>
   )
 }
 
@@ -70,11 +123,15 @@ export default function Upload() {
   const [expanded, setExpanded] = useState<number | null>(null)
   const [expandedDiff, setExpandedDiff] = useState<ImportDiff | null>(null)
   const [noteEdit, setNoteEdit] = useState<{ id: number; text: string } | null>(null)
+  const [sealedDecks, setSealedDecks] = useState<Deck[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   const loadHistory = () => get<ImportHistoryRow[]>('/imports').then(setHistory).catch(() => {})
   useEffect(() => {
     loadHistory()
+    get<Deck[]>('/decks')
+      .then((ds) => setSealedDecks(ds.filter((d) => d.format === 'sealed')))
+      .catch(() => {})
   }, [])
 
   const run = async (dryRun: boolean, force = false) => {
@@ -243,6 +300,10 @@ export default function Upload() {
                 {report.dry_run ? 'Changes this file would make' : 'Changes made'}:{' '}
                 <DiffSummaryLine s={report.diff.summary} />
               </h4>
+              {!report.dry_run && (
+                <DiffActions diff={report.diff} importId={report.import_id}
+                  sealedDecks={sealedDecks} />
+              )}
               <DiffTable diff={report.diff} />
             </>
           )}
@@ -350,6 +411,10 @@ export default function Upload() {
                         <p style={{ margin: '0.3rem 0' }}>
                           <DiffSummaryLine s={expandedDiff.summary} />
                         </p>
+                        {!h.dry_run && (
+                          <DiffActions diff={expandedDiff} importId={h.id}
+                            sealedDecks={sealedDecks} />
+                        )}
                         <DiffTable diff={expandedDiff} />
                       </>
                     ) : (

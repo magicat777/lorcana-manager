@@ -40,8 +40,12 @@ const MAX_LINES = 8
 
 const bucketVal = (b: SnapshotBucket | undefined, m: Metric): number =>
   !b ? 0 : m === 'value' ? b.v : m === 'copies' ? b.c : b.u
-const snapTotal = (s: SnapshotRow, m: Metric): number =>
-  m === 'value' ? Number(s.value_usd) : m === 'copies' ? s.total_cards : s.unique_cards
+// Backfilled snapshots only carry total_cards — other metrics return null
+// there and the point is skipped.
+const snapTotal = (s: SnapshotRow, m: Metric): number | null =>
+  m === 'value' ? (s.value_usd == null ? null : Number(s.value_usd))
+  : m === 'copies' ? s.total_cards
+  : s.unique_cards
 
 function seriesColor(dim: Dim, name: string, i: number): string {
   if (name === 'Other') return '#666e8c'
@@ -67,12 +71,87 @@ function MoverTable({ rows }: { rows: MoverRow[] }) {
   )
 }
 
-function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePoint[] }) {
-  const [metric, setMetric] = useState<Metric>('value')
-  const [dim, setDim] = useState<Dim>('none')
-  const [range, setRange] = useState<Range>('3m')
+function buildSeries(
+  inRange: SnapshotRow[], legacy: ValuePoint[], metric: Metric, dim: Dim,
+  range: Range, cutoff: number,
+): TsSeries[] {
+  if (dim === 'none') {
+    const points = inRange
+      .map((s) => ({ t: s.captured_at, v: snapTotal(s, metric) }))
+      .filter((p): p is { t: string; v: number } => p.v != null)
+    if (metric === 'value') {
+      // Weekly price-snapshot values from before daily snapshots began keep
+      // the chart's history from starting at day one of this feature.
+      const firstSnap = points.length ? Date.parse(points[0].t) : Infinity
+      const prefix = legacy
+        .filter((h) => Date.parse(h.day) < firstSnap
+          && (range === 'all' || Date.parse(h.day) >= cutoff))
+        .map((h) => ({ t: h.day, v: Number(h.value) }))
+      points.unshift(...prefix)
+    }
+    return [{ name: 'Total', color: '#c8a24a', points }]
+  }
 
-  const { series, markers } = useMemo(() => {
+  // Rank buckets by the latest full snapshot, draw the top N, sum the rest.
+  // Backfilled snapshots have no breakdown and are skipped here.
+  const withBd = inRange.filter((s) => s.breakdown)
+  const latest = withBd[withBd.length - 1]
+  if (!latest) return []
+  const allKeys = Object.keys(latest.breakdown![dim] || {})
+  allKeys.sort((a, b) => {
+    if (dim === 'cost') return (a === '?' ? 99 : Number(a)) - (b === '?' ? 99 : Number(b))
+    return bucketVal(latest.breakdown![dim][b], metric) - bucketVal(latest.breakdown![dim][a], metric)
+  })
+  const top = allKeys.slice(0, MAX_LINES)
+  const series: TsSeries[] = top.map((k, i) => ({
+    name: k,
+    color: seriesColor(dim, k, i),
+    points: withBd.map((s) => ({
+      t: s.captured_at, v: bucketVal(s.breakdown![dim]?.[k], metric),
+    })),
+  }))
+  if (allKeys.length > MAX_LINES) {
+    series.push({
+      name: 'Other',
+      color: seriesColor(dim, 'Other', 0),
+      points: withBd.map((s) => ({
+        t: s.captured_at,
+        v: Object.entries(s.breakdown![dim] || {})
+          .filter(([k]) => !top.includes(k))
+          .reduce((sum, [, b]) => sum + bucketVal(b, metric), 0),
+      })),
+    })
+  }
+  return series
+}
+
+function ToggleRow<T extends string>({ options, labels, active, onToggle }: {
+  options: T[]
+  labels: Record<T, string>
+  active: (o: T) => boolean
+  onToggle: (o: T) => void
+}) {
+  return (
+    <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      {options.map((o) => (
+        <button key={o} className={active(o) ? '' : 'secondary'}
+          style={{ padding: '0.15rem 0.6rem' }} onClick={() => onToggle(o)}>
+          {labels[o]}
+        </button>
+      ))}
+    </span>
+  )
+}
+
+function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePoint[] }) {
+  const [metrics, setMetrics] = useState<Metric[]>(['value', 'copies'])
+  const [dim, setDim] = useState<Dim>('none')
+  const [range, setRange] = useState<Range>('1m')
+
+  const toggleMetric = (m: Metric) =>
+    setMetrics((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]))
+
+  const { charts, markers } = useMemo(() => {
     const cutoff = Date.now() - RANGE_DAYS[range] * 86400e3
     const inRange = snaps.filter(
       (s) => range === 'all' || Date.parse(s.captured_at) >= cutoff,
@@ -83,97 +162,58 @@ function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePo
         t: s.captured_at,
         label: `Import: ${s.import_note || s.import_filename || `#${s.import_id}`}`,
       }))
-
-    if (dim === 'none') {
-      const points = inRange.map((s) => ({ t: s.captured_at, v: snapTotal(s, metric) }))
-      if (metric === 'value') {
-        // Weekly price-snapshot values from before daily snapshots began keep
-        // the chart's history from starting at day one of this feature.
-        const firstSnap = inRange.length ? Date.parse(inRange[0].captured_at) : Infinity
-        const prefix = legacy
-          .filter((h) => Date.parse(h.day) < firstSnap
-            && (range === 'all' || Date.parse(h.day) >= cutoff))
-          .map((h) => ({ t: h.day, v: Number(h.value) }))
-        points.unshift(...prefix)
-      }
-      return { series: [{ name: 'Total', color: '#c8a24a', points }] as TsSeries[], markers }
-    }
-
-    // Rank buckets by the latest snapshot, draw the top N, sum the rest.
-    const latest = inRange[inRange.length - 1]
-    if (!latest) return { series: [] as TsSeries[], markers }
-    const allKeys = Object.keys(latest.breakdown[dim] || {})
-    allKeys.sort((a, b) => {
-      if (dim === 'cost') return (a === '?' ? 99 : Number(a)) - (b === '?' ? 99 : Number(b))
-      return bucketVal(latest.breakdown[dim][b], metric) - bucketVal(latest.breakdown[dim][a], metric)
-    })
-    const top = allKeys.slice(0, MAX_LINES)
-    const hasOther = allKeys.length > MAX_LINES
-    const series: TsSeries[] = top.map((k, i) => ({
-      name: k,
-      color: seriesColor(dim, k, i),
-      points: inRange.map((s) => ({
-        t: s.captured_at, v: bucketVal(s.breakdown[dim]?.[k], metric),
-      })),
-    }))
-    if (hasOther) {
-      series.push({
-        name: 'Other',
-        color: seriesColor(dim, 'Other', 0),
-        points: inRange.map((s) => ({
-          t: s.captured_at,
-          v: Object.entries(s.breakdown[dim] || {})
-            .filter(([k]) => !top.includes(k))
-            .reduce((sum, [, b]) => sum + bucketVal(b, metric), 0),
-        })),
-      })
-    }
-    return { series, markers }
-  }, [snaps, legacy, metric, dim, range])
-
-  const fmt = metric === 'value'
-    ? (v: number) => `$${v >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(2)}`
-    : (v: number) => String(Math.round(v))
-  const havePoints = series.some((s) => s.points.length >= 2)
+    const order: Metric[] = ['value', 'copies', 'unique']
+    const charts = order
+      .filter((m) => metrics.includes(m))
+      .map((m) => ({ metric: m, series: buildSeries(inRange, legacy, m, dim, range, cutoff) }))
+    return { charts, markers }
+  }, [snaps, legacy, metrics, dim, range])
 
   return (
     <div className="panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        flexWrap: 'wrap', gap: '0.5rem' }}>
-        <h3 style={{ margin: 0 }}>Collection over time</h3>
-        <span style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <select value={metric} onChange={(e) => setMetric(e.target.value as Metric)}>
-            {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => (
-              <option key={m} value={m}>{METRIC_LABEL[m]}</option>
-            ))}
-          </select>
-          <select value={dim} onChange={(e) => setDim(e.target.value as Dim)}>
-            {(Object.keys(DIM_LABEL) as Dim[]).map((d) => (
-              <option key={d} value={d}>{DIM_LABEL[d]}</option>
-            ))}
-          </select>
-          <select value={range} onChange={(e) => setRange(e.target.value as Range)}>
-            {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
-              <option key={r} value={r}>{RANGE_LABEL[r]}</option>
-            ))}
-          </select>
-        </span>
+      <h3 style={{ marginTop: 0 }}>Collection over time</h3>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.2rem',
+        alignItems: 'center', marginBottom: '0.3rem' }}>
+        <ToggleRow options={['value', 'copies', 'unique'] as Metric[]} labels={METRIC_LABEL}
+          active={(m) => metrics.includes(m)} onToggle={toggleMetric} />
+        <ToggleRow options={Object.keys(DIM_LABEL) as Dim[]} labels={DIM_LABEL}
+          active={(d) => dim === d} onToggle={setDim} />
+        <ToggleRow options={Object.keys(RANGE_LABEL) as Range[]} labels={RANGE_LABEL}
+          active={(r) => range === r} onToggle={setRange} />
       </div>
-      {havePoints ? (
-        <>
-          <div style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
-            <TimeSeries series={series} markers={markers} format={fmt} />
+      {metrics.length === 0 && (
+        <p className="muted" style={{ marginBottom: 0 }}>Toggle a metric to chart it.</p>
+      )}
+      {charts.map(({ metric, series }) => {
+        const fmt = metric === 'value'
+          ? (v: number) => `$${v >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(2)}`
+          : (v: number) => String(Math.round(v))
+        const havePoints = series.some((s) => s.points.length >= 2)
+        return (
+          <div key={metric} style={{ marginTop: '0.6rem' }}>
+            <h4 style={{ margin: '0 0 0.2rem' }}>
+              {METRIC_LABEL[metric]}
+              {dim !== 'none' && <span className="muted"> — {DIM_LABEL[dim].toLowerCase()}</span>}
+            </h4>
+            {havePoints ? (
+              <div style={{ overflowX: 'auto' }}>
+                <TimeSeries series={series} markers={markers} format={fmt} height={180} />
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                {dim !== 'none' || metric !== 'copies'
+                  ? 'Needs 2+ full snapshots — pre-feature history only recorded total copies, so this chart fills in from today\'s daily snapshots.'
+                  : 'Not enough data points in this window.'}
+              </p>
+            )}
           </div>
-          <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.8rem' }}>
-            Daily snapshots + one per import (dotted lines — hover for the upload note).
-            Prices refresh weekly (Mondays), so between refreshes value moves only when
-            cards are added or removed.
-          </p>
-        </>
-      ) : (
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Not enough snapshots in this window yet — the daily snapshot job adds one point
-          per day (plus one per upload). Try a longer range, or check back tomorrow.
+        )
+      })}
+      {charts.some((c) => c.series.some((s) => s.points.length >= 2)) && (
+        <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
+          One point per daily snapshot + one per import (dotted markers — hover for the
+          upload note). Prices refresh weekly (Mondays), so between refreshes value moves
+          only when cards are added or removed.
         </p>
       )}
     </div>

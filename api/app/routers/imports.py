@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from .. import db
 from ..services import importer
@@ -12,13 +13,15 @@ async def upload(
     mode: str = Form("replace"),
     dry_run: bool = Form(False),
     force: bool = Form(False),
+    note: str = Form(""),
 ):
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "file too large")
     try:
         with db.pool.connection() as conn:
-            return importer.run_import(conn, file.filename or "upload", data, mode, dry_run, force)
+            return importer.run_import(conn, file.filename or "upload", data, mode, dry_run,
+                                       force, note=note)
     except importer.DuplicateFileError as e:
         raise HTTPException(
             409,
@@ -36,7 +39,8 @@ async def upload(
 def history(limit: int = 50):
     return db.query(
         """SELECT id, filename, uploaded_at, mode, dry_run, row_count,
-                  matched_rows, unmatched_count, summary
+                  matched_rows, unmatched_count, summary, note,
+                  diff->'summary' AS diff_summary
            FROM imports ORDER BY id DESC LIMIT %s""",
         (min(limit, 200),),
     )
@@ -45,6 +49,22 @@ def history(limit: int = 50):
 @router.get("/imports/{import_id}")
 def detail(import_id: int):
     row = db.query_one("SELECT * FROM imports WHERE id=%s", (import_id,))
+    if not row:
+        raise HTTPException(404, "no such import")
+    return row
+
+
+class NoteIn(BaseModel):
+    note: str = ""
+
+
+@router.patch("/imports/{import_id}")
+def set_note(import_id: int, body: NoteIn):
+    """Annotate an upload after the fact (e.g. 'sealed competition winnings')."""
+    row = db.query_one(
+        "UPDATE imports SET note=%s WHERE id=%s RETURNING id, note",
+        (body.note.strip() or None, import_id),
+    )
     if not row:
         raise HTTPException(404, "no such import")
     return row

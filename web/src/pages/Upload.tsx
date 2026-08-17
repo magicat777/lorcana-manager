@@ -1,15 +1,75 @@
-import { useEffect, useRef, useState } from 'react'
-import { get, upload } from '../api'
-import type { ImportHistoryRow, ImportReport } from '../types'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { get, send, upload } from '../api'
+import type { ImportDiff, ImportHistoryRow, ImportReport } from '../types'
+
+const DIFF_DISPLAY_CAP = 60
+
+function DiffSummaryLine({ s }: { s: ImportDiff['summary'] }) {
+  return (
+    <span>
+      {s.copies_added > 0 && <span className="ok">+{s.copies_added} copies</span>}
+      {s.copies_added > 0 && s.copies_removed > 0 && <span className="muted"> · </span>}
+      {s.copies_removed > 0 && <span className="error">−{s.copies_removed} copies</span>}
+      {s.copies_added === 0 && s.copies_removed === 0 && <span className="muted">no changes</span>}
+      <span className="muted">
+        {' '}({s.new_cards} new card{s.new_cards === 1 ? '' : 's'}
+        {s.removed_cards > 0 && `, ${s.removed_cards} zeroed`})
+      </span>
+    </span>
+  )
+}
+
+function DiffTable({ diff }: { diff: ImportDiff }) {
+  const [showAll, setShowAll] = useState(false)
+  if (!diff.cards.length) return <p className="muted">No card counts changed.</p>
+  const rows = showAll ? diff.cards : diff.cards.slice(0, DIFF_DISPLAY_CAP)
+  return (
+    <>
+      <table>
+        <thead>
+          <tr><th>Card</th><th>Set·#</th><th>Before</th><th>After</th><th>Δ</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.card_id}>
+              <td>{c.full_name}</td>
+              <td className="muted">{c.set_code}·{c.collector_number}</td>
+              <td className="muted">{c.before_normal}+{c.before_foil}✦</td>
+              <td>{c.after_normal}+{c.after_foil}✦</td>
+              <td className={c.delta >= 0 ? 'ok' : 'error'}>
+                {c.delta >= 0 ? '+' : ''}{c.delta}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {diff.cards.length > DIFF_DISPLAY_CAP && !showAll && (
+        <button className="secondary" style={{ marginTop: 4 }} onClick={() => setShowAll(true)}>
+          Show all {diff.cards.length} changed cards
+        </button>
+      )}
+      {diff.truncated > 0 && (
+        <p className="muted" style={{ fontSize: '0.8rem' }}>
+          {diff.truncated} more small changes weren't stored (per-import cap); totals above
+          cover everything.
+        </p>
+      )}
+    </>
+  )
+}
 
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null)
   const [mode, setMode] = useState<'replace' | 'merge'>('replace')
+  const [note, setNote] = useState('')
   const [report, setReport] = useState<ImportReport | null>(null)
   const [history, setHistory] = useState<ImportHistoryRow[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const [expandedDiff, setExpandedDiff] = useState<ImportDiff | null>(null)
+  const [noteEdit, setNoteEdit] = useState<{ id: number; text: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const loadHistory = () => get<ImportHistoryRow[]>('/imports').then(setHistory).catch(() => {})
@@ -26,6 +86,7 @@ export default function Upload() {
     form.append('mode', mode)
     form.append('dry_run', String(dryRun))
     form.append('force', String(force))
+    form.append('note', note)
     try {
       setReport(await upload<ImportReport>('/imports', form))
       loadHistory()
@@ -48,6 +109,31 @@ export default function Upload() {
       setFile(f)
       setReport(null)
       setError('')
+    }
+  }
+
+  const toggleExpand = (id: number) => {
+    if (expanded === id) {
+      setExpanded(null)
+      setExpandedDiff(null)
+      return
+    }
+    setExpanded(id)
+    setExpandedDiff(null)
+    get<{ diff: ImportDiff | null }>(`/imports/${id}`)
+      .then((d) => setExpandedDiff(d.diff ?? { summary: { cards_changed: 0, new_cards: 0, removed_cards: 0, copies_added: 0, copies_removed: 0 }, cards: [], truncated: 0 }))
+      .catch(() => setExpanded(null))
+  }
+
+  const saveNote = async () => {
+    if (!noteEdit) return
+    const { id, text } = noteEdit
+    setNoteEdit(null)
+    try {
+      await send('PATCH', `/imports/${id}`, { note: text })
+      setHistory((h) => h.map((r) => (r.id === id ? { ...r, note: text.trim() || null } : r)))
+    } catch {
+      loadHistory()
     }
   }
 
@@ -103,6 +189,14 @@ export default function Upload() {
         </label>
       </div>
 
+      <input
+        type="text"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder='Note for this upload (optional) — e.g. "additional cards from sealed competition"'
+        style={{ width: '100%', margin: '0.5rem 0' }}
+      />
+
       <div style={{ display: 'flex', gap: '0.7rem' }}>
         <button className="secondary" disabled={!file || busy} onClick={() => run(true)}>
           Preview (dry run)
@@ -143,6 +237,15 @@ export default function Upload() {
               </div>
             </div>
           </div>
+          {report.diff && (
+            <>
+              <h4 style={{ marginBottom: '0.3rem' }}>
+                {report.dry_run ? 'Changes this file would make' : 'Changes made'}:{' '}
+                <DiffSummaryLine s={report.diff.summary} />
+              </h4>
+              <DiffTable diff={report.diff} />
+            </>
+          )}
           {report.replace_losses?.length > 0 && (
             <>
               <h4 className="error">
@@ -190,21 +293,72 @@ export default function Upload() {
       )}
 
       <h2>Import history</h2>
+      <p className="muted" style={{ marginTop: '-0.4rem', fontSize: '0.85rem' }}>
+        Click a row's changes to see the per-card diff; click a note to edit it.
+      </p>
       <table>
         <thead>
-          <tr><th>#</th><th>When</th><th>File</th><th>Mode</th><th>Rows</th><th>Unmatched</th><th>Total after</th></tr>
+          <tr><th>#</th><th>When</th><th>File</th><th>Mode</th><th>Rows</th><th>Changes</th><th>Total after</th><th>Note</th></tr>
         </thead>
         <tbody>
           {history.map((h) => (
-            <tr key={h.id}>
-              <td>{h.id}</td>
-              <td>{new Date(h.uploaded_at).toLocaleString()}</td>
-              <td>{h.filename}{h.dry_run ? ' (dry run)' : ''}</td>
-              <td>{h.mode}</td>
-              <td>{h.matched_rows}/{h.row_count}</td>
-              <td className={h.unmatched_count ? 'error' : ''}>{h.unmatched_count}</td>
-              <td>{h.dry_run ? '—' : h.summary?.qty_after ?? '—'}</td>
-            </tr>
+            <Fragment key={h.id}>
+              <tr>
+                <td>{h.id}</td>
+                <td>{new Date(h.uploaded_at).toLocaleString()}</td>
+                <td>{h.filename}{h.dry_run ? ' (dry run)' : ''}</td>
+                <td>{h.mode}</td>
+                <td className={h.unmatched_count ? 'error' : ''}>{h.matched_rows}/{h.row_count}</td>
+                <td>
+                  {h.diff_summary ? (
+                    <a style={{ cursor: 'pointer' }} onClick={() => toggleExpand(h.id)}>
+                      {h.diff_summary.copies_added > 0 && `+${h.diff_summary.copies_added}`}
+                      {h.diff_summary.copies_added > 0 && h.diff_summary.copies_removed > 0 && ' / '}
+                      {h.diff_summary.copies_removed > 0 && `−${h.diff_summary.copies_removed}`}
+                      {h.diff_summary.copies_added === 0 && h.diff_summary.copies_removed === 0 && '±0'}
+                      {expanded === h.id ? ' ▾' : ' ▸'}
+                    </a>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>{h.dry_run ? '—' : h.summary?.qty_after ?? '—'}</td>
+                <td onClick={() => !noteEdit && setNoteEdit({ id: h.id, text: h.note ?? '' })}
+                  style={{ cursor: 'pointer', minWidth: 120 }}>
+                  {noteEdit?.id === h.id ? (
+                    <input
+                      autoFocus
+                      value={noteEdit.text}
+                      onChange={(e) => setNoteEdit({ id: h.id, text: e.target.value })}
+                      onBlur={saveNote}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveNote()
+                        if (e.key === 'Escape') setNoteEdit(null)
+                      }}
+                      style={{ width: '100%' }}
+                    />
+                  ) : (
+                    h.note ?? <span className="muted">＋ add</span>
+                  )}
+                </td>
+              </tr>
+              {expanded === h.id && (
+                <tr>
+                  <td colSpan={8} style={{ background: 'var(--panel, #171b2e)' }}>
+                    {expandedDiff ? (
+                      <>
+                        <p style={{ margin: '0.3rem 0' }}>
+                          <DiffSummaryLine s={expandedDiff.summary} />
+                        </p>
+                        <DiffTable diff={expandedDiff} />
+                      </>
+                    ) : (
+                      <span className="muted">loading…</span>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

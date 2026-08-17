@@ -72,6 +72,30 @@ export interface ReplaceLoss {
   file_foil: number
 }
 
+export interface DiffCard {
+  card_id: string
+  full_name: string
+  set_code: string
+  collector_number: string
+  before_normal: number
+  before_foil: number
+  after_normal: number
+  after_foil: number
+  delta: number
+}
+
+export interface ImportDiff {
+  summary: {
+    cards_changed: number
+    new_cards: number
+    removed_cards: number
+    copies_added: number
+    copies_removed: number
+  }
+  cards: DiffCard[]
+  truncated: number
+}
+
 export interface ImportReport {
   import_id: number
   filename: string
@@ -91,6 +115,7 @@ export interface ImportReport {
     qty_in_file: number
     lost_cards: number
   }
+  diff?: ImportDiff
 }
 
 export interface ImportHistoryRow {
@@ -103,6 +128,27 @@ export interface ImportHistoryRow {
   matched_rows: number
   unmatched_count: number
   summary: ImportReport['summary'] | null
+  note: string | null
+  diff_summary: ImportDiff['summary'] | null
+}
+
+export interface SnapshotBucket {
+  c: number // copies
+  u: number // unique cards
+  v: number // value USD
+}
+
+export interface SnapshotRow {
+  id: number
+  captured_at: string
+  source: 'daily' | 'import' | 'manual'
+  import_id: number | null
+  total_cards: number
+  unique_cards: number
+  value_usd: string | number
+  breakdown: Record<'rarity' | 'ink' | 'set' | 'type' | 'cost', Record<string, SnapshotBucket>>
+  import_note: string | null
+  import_filename: string | null
 }
 
 export interface DeckCardRow {

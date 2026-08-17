@@ -38,6 +38,23 @@ def per_set():
     )
 
 
+@router.get("/stats/snapshots")
+def snapshot_history(days: int = 400):
+    """Collection snapshots (daily cron + one per import), oldest first.
+    Each row carries the full breakdown JSONB — the frontend picks the
+    dimension/metric client-side so switching dropdowns costs no round-trip."""
+    return db.query(
+        """SELECT cs.id, cs.captured_at, cs.source, cs.import_id,
+                  cs.total_cards, cs.unique_cards, cs.value_usd, cs.breakdown,
+                  i.note AS import_note, i.filename AS import_filename
+           FROM collection_snapshots cs
+           LEFT JOIN imports i ON i.id = cs.import_id
+           WHERE cs.captured_at >= now() - make_interval(days => %s)
+           ORDER BY cs.captured_at""",
+        (min(days, 3650),),
+    )
+
+
 @router.get("/stats/value-history")
 def value_history():
     """Collection value at each weekly price snapshot — today's quantities at

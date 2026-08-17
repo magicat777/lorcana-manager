@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get, money } from '../api'
+import Bars from '../components/Bars'
 import TimeSeries from '../components/TimeSeries'
 import type { TsMarker, TsSeries } from '../components/TimeSeries'
 import type { SetStats, SnapshotBucket, SnapshotRow, Totals } from '../types'
@@ -151,7 +152,7 @@ function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePo
   const toggleMetric = (m: Metric) =>
     setMetrics((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]))
 
-  const { charts, markers } = useMemo(() => {
+  const { charts, markers, latestBd } = useMemo(() => {
     const cutoff = Date.now() - RANGE_DAYS[range] * 86400e3
     const inRange = snaps.filter(
       (s) => range === 'all' || Date.parse(s.captured_at) >= cutoff,
@@ -166,7 +167,10 @@ function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePo
     const charts = order
       .filter((m) => metrics.includes(m))
       .map((m) => ({ metric: m, series: buildSeries(inRange, legacy, m, dim, range, cutoff) }))
-    return { charts, markers }
+    // Newest snapshot that recorded a breakdown (backfilled rows have none) —
+    // falls back to any-time so bars work even on short ranges.
+    const latestBd = [...snaps].reverse().find((s) => s.breakdown) ?? null
+    return { charts, markers, latestBd }
   }, [snaps, legacy, metrics, dim, range])
 
   return (
@@ -199,11 +203,27 @@ function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePo
               <div style={{ overflowX: 'auto' }}>
                 <TimeSeries series={series} markers={markers} format={fmt} height={180} />
               </div>
+            ) : dim !== 'none' && latestBd?.breakdown ? (
+              <>
+                <Bars format={fmt} bars={
+                  Object.entries(latestBd.breakdown[dim])
+                    .sort(([a, av], [b, bv]) => {
+                      if (dim === 'cost') return (a === '?' ? 99 : Number(a)) - (b === '?' ? 99 : Number(b))
+                      return bucketVal(bv, metric) - bucketVal(av, metric)
+                    })
+                    .map(([k, b], i) => ({
+                      name: k, color: seriesColor(dim, k, i), value: bucketVal(b, metric),
+                    }))
+                } />
+                <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.8rem' }}>
+                  Current composition ({new Date(latestBd.captured_at).toLocaleDateString()}) —
+                  trend lines replace these bars once a second daily snapshot lands. Pre-feature
+                  history only recorded total copies, not composition.
+                </p>
+              </>
             ) : (
               <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                {dim !== 'none' || metric !== 'copies'
-                  ? 'Needs 2+ full snapshots — pre-feature history only recorded total copies, so this chart fills in from today\'s daily snapshots.'
-                  : 'Not enough data points in this window.'}
+                Not enough data points in this window.
               </p>
             )}
           </div>

@@ -76,7 +76,7 @@ export default function CardDetail() {
               rows.map((h) => ({ t: h.captured_at.slice(0, 10), v: Number(h[key]) }))
             return (
               <div className="panel">
-                <h3 style={{ marginTop: 0 }}>Price history <span className="muted">(weekly)</span></h3>
+                <h3 style={{ marginTop: 0 }}>Price history <span className="muted">(nightly)</span></h3>
                 {hist.length >= 2 && (
                   <p style={{ margin: '0.3rem 0' }}>
                     <span className="muted" style={{ display: 'inline-block', width: 60 }}>Price</span>

@@ -1,6 +1,6 @@
 """Daily collection snapshot job: append one collection_snapshots row so the
-Stats page gets a daily value/size series (prices only move on the weekly
-refresh, but quantities move whenever cards are scanned or imported).
+Stats page gets a daily value/size series (prices land nightly via the 12:00 UTC
+refresh, and quantities move whenever cards are scanned or imported).
 
 Idempotent per day: a rerun on a day that already has a 'daily' snapshot is a
 no-op, so re-applying the CronJob or replaying a missed run is safe. Import

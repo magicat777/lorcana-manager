@@ -57,7 +57,7 @@ def snapshot_history(days: int = 400):
 
 @router.get("/stats/value-history")
 def value_history():
-    """Collection value at each weekly price snapshot — today's quantities at
+    """Collection value at each daily price snapshot — today's quantities at
     historical prices (a holdings-value series, not a cash-flow history)."""
     return db.query(
         """WITH daily AS (

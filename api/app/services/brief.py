@@ -3,7 +3,7 @@
 Sections: tonight's league nights (venues.event_night — one source of truth
 with the match-log dropdown), the week's schedule, last-event recap (with the
 one-change reminder), local meta from recent matches, deck watch signals, price
-movers on owned cards (needs >=2 weekly snapshots), official news (news_items,
+movers on owned cards (needs >=2 daily snapshots), official news (news_items,
 fetched daily by app.jobs.fetch_news — new-in-36h items make the text push),
 and collection totals."""
 from datetime import date, datetime

@@ -8,7 +8,7 @@ metadata:
     ai.odin.managed: "true"
     ai.odin.component: collection-snapshot
 spec:
-  schedule: "0 13 * * *"   # 13:00 UTC = 06:00 PDT daily (after Monday's 06:00 UTC price refresh)
+  schedule: "0 13 * * *"   # 13:00 UTC = 06:00 PDT daily (after the 12:00 UTC nightly price refresh)
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2

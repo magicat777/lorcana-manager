@@ -7,8 +7,8 @@ Disney Lorcana TCG card database + collection manager on the ODIN k3s cluster.
 - **API:** FastAPI behind the same NodePort under `/api` (nginx same-origin proxy).
 - **DB:** database `lorcana` on the shared odin-prime PostgreSQL
   (`postgresql.odin-prime.svc:5432`, browse via pgAdmin :30880).
-- **Catalog:** seeded from the [Lorcast API](https://lorcast.com/docs/api); weekly
-  price-refresh CronJob (Mon 06:00).
+- **Catalog:** seeded from the [Lorcast API](https://lorcast.com/docs/api); nightly
+  price-refresh CronJob (12:00 UTC).
 - **News:** daily CronJob (14:30 UTC) scrapes official news from
   disneylorcana.com into `news_items`; new items surface in the brief (web,
   ntfy push, MCP) — add further official channels in `api/app/jobs/fetch_news.py`.

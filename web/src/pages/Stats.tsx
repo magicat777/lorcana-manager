@@ -232,8 +232,8 @@ function HistoryPanel({ snaps, legacy }: { snaps: SnapshotRow[]; legacy: ValuePo
       {charts.some((c) => c.series.some((s) => s.points.length >= 2)) && (
         <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
           One point per daily snapshot + one per import (dotted markers — hover for the
-          upload note). Prices refresh weekly (Mondays), so between refreshes value moves
-          only when cards are added or removed.
+          upload note). Prices refresh nightly at 05:00 PT from Lorcast, one hour before
+          the daily snapshot.
         </p>
       )}
     </div>

@@ -37,7 +37,7 @@ flowchart LR
         subgraph ns [namespace: lorcana]
             W[lorcana-web<br/>nginx + React SPA<br/>NodePort 30710]
             A[lorcana-api<br/>FastAPI :8000<br/>ClusterIP only]
-            CJ1[CronJob: price-refresh<br/>Mon 06:00]
+            CJ1[CronJob: price-refresh<br/>nightly 12:00 UTC]
             CJ2[CronJob: daily-brief<br/>15:00 UTC = 8am PT]
             J1[Job: migrate<br/>run by apply.sh]
             J2[Job: seed<br/>manual]
@@ -114,7 +114,7 @@ lorcana/
 | API image | `localhost:30500/lorcana/api:fastapi-YYYYMMDD` |
 | Web image | `localhost:30500/lorcana/web:nginx-YYYYMMDD` |
 | Secrets | `lorcana-db` (DATABASE_URL, PGPASSWORD), `lorcana-ntfy` (LORCANA_NTFY_URL, optional) |
-| CronJobs | `lorcana-price-refresh` (Mon 06:00), `lorcana-news-fetch` (14:30 UTC), `lorcana-daily-brief` (15:00 UTC = 8am PT) |
+| CronJobs | `lorcana-price-refresh` (nightly 12:00 UTC), `lorcana-news-fetch` (14:30 UTC), `lorcana-daily-brief` (15:00 UTC = 8am PT) |
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
@@ -130,7 +130,7 @@ kubectl -n lorcana delete job lorcana-seed --ignore-not-found
 kubectl apply -f deploy/jobs/seed-job.yaml
 kubectl -n lorcana logs -f job/lorcana-seed
 
-# Run the price refresh right now (don't wait for Monday)
+# Run the price refresh right now (don't wait for tonight)
 kubectl -n lorcana create job --from=cronjob/lorcana-price-refresh price-refresh-manual
 
 # Send today's brief right now
@@ -321,7 +321,7 @@ real data without running the API locally.
 
 ## 6. Scheduled jobs & data refresh
 
-### 6.1 CronJob: `lorcana-price-refresh` — Mondays 06:00
+### 6.1 CronJob: `lorcana-price-refresh` — nightly 12:00 UTC (05:00 PT)
 
 Runs `python -m app.jobs.refresh_prices`. Updates `price_usd`,
 `price_usd_foil`, `legalities`, `raw` on existing cards **and appends one
@@ -329,11 +329,11 @@ Runs `python -m app.jobs.refresh_prices`. Updates `price_usd`,
 until the seed job has inserted it.
 
 The brief's *price movers* section needs **at least two** history snapshots per
-card, so it stays empty until the second weekly run after setup. (The first
+card, so it stays empty until the second nightly run after setup. (The first
 snapshot was seeded manually 2026-08-06.)
 
 Price history also powers **Stats-page trends**: `GET /stats/value-history`
-(today's collection valued at each weekly snapshot) and
+(today's collection valued at each daily snapshot) and
 `GET /stats/movers?days=30|90` (top owned-card gainers/losers; falls back to
 the oldest snapshot while history is shorter than the window), plus per-card
 sparklines on card detail (`price_history` in the card payload).
@@ -388,7 +388,7 @@ across DST changes. Both CronJobs use `concurrencyPolicy: Forbid`.
    (see §7.3).
 3. If Dreamborn labels the new set unusually and imports report
    `unknown set '...'`, add an alias (§7.4).
-4. Prices for the new cards appear after the next Monday price refresh (or run
+4. Prices for the new cards appear after the next nightly price refresh (or run
    it manually, §2).
 
 ---
@@ -475,7 +475,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','DRAW','BYE'), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
-| `price_history` | Append-only weekly snapshots per card (mig 007). Feeds price movers. |
+| `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers. |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
 
 Allocation ("free copies") is **not** a view — it's inline SQL in
@@ -519,8 +519,8 @@ The importer resolves a file's set label via `set_aliases` first, then numeric
 | Rows unmatched: `ambiguous name` | The set-scoped name fallback found duplicates; fix the row's card number in the CSV (matching never guesses). |
 | Migrate job failed on apply.sh | Script prints the last 50 psql lines. Fix the SQL (must be idempotent), re-run `apply.sh`. |
 | New set missing from UI | Seed job hasn't run — §3.4. |
-| New cards have no prices | Price refresh only updates cards it already knows and runs Mondays; run it manually (§2) after seeding. |
-| Brief has no price movers | Needs ≥2 weekly `price_history` snapshots per card, and only shows owned-card moves ≥ $0.50. |
+| New cards have no prices | Price refresh only updates cards it already knows and runs nightly at 12:00 UTC; run it manually (§2) after seeding. |
+| Brief has no price movers | Needs ≥2 daily `price_history` snapshots per card, and only shows owned-card moves ≥ $0.50. |
 | No ntfy push | Secret `lorcana-ntfy` missing (job logs say "log-only"), or phone unsubscribed after a rotation. `kubectl -n lorcana logs job/<latest brief job>`. |
 | Brief "tonight" always empty | Venues need `event_night`/`event_time` set — `PUT /api/venues/{slug}` or via psql. |
 | Deck says not buildable but I own the cards | Copies are allocated to *other* built decks. Check the card detail page ("N allocated to built decks · M free"), or un-mark the other deck. Force-building is available but means physically sharing copies. |
@@ -575,10 +575,10 @@ this is the manual way to adjust quantities without a re-import.
 
 Collection totals (unique owned / catalog size, normal + foil copies, estimated
 value), a **collection value over time** chart (today's collection at each
-weekly price snapshot, hover any point for the value), **price movers** tables
+daily price snapshot, hover any point for the value), **price movers** tables
 (owned-card gainers/losers with a 30/90-day toggle), plus a panel per set with
 completion % bar, playset progress (4+ copies), copy count, and set value.
-Card detail pages get weekly price sparklines (normal + foil) once a card has
+Card detail pages get nightly price sparklines (normal + foil) once a card has
 two snapshots. Deck composition counts dual-ink cards as their own "A/B"
 bucket so ink counts always sum to the deck total.
 

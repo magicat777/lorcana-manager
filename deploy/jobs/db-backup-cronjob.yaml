@@ -51,8 +51,27 @@ spec:
                   echo "wrote $f ($size bytes, $tables tables)"
                   # Retention: prune AFTER the new dump verified, never before.
                   find /backup -name 'lorcana-*.dump' -mtime +30 -delete
-                  echo "kept: $(ls /backup/lorcana-*.dump | wc -l) dumps"
-                  ls -lh /backup | tail -4
+                  echo "kept: $(ls /backup/lorcana-*.dump | wc -l) local dumps"
+                  # Off-host copy to the Synology (freya-syn1618, NFS share
+                  # already mounted on the node). The dump above is safely on
+                  # local disk either way; a sync failure alerts and fails the
+                  # job so it's visible, without having cost us the backup.
+                  # /proc/mounts check: if the host mount is absent the bind
+                  # target is a plain local dir — refuse to write into it.
+                  grep -q " /nas nfs" /proc/mounts || fail "NAS share not mounted (dump is on local disk)"
+                  mkdir -p /nas/k3s-backups/lorcana
+                  synced=0
+                  for d in /backup/lorcana-*.dump; do
+                    b=$(basename "$d")
+                    if [ ! -f "/nas/k3s-backups/lorcana/$b" ]; then
+                      cp "$d" "/nas/k3s-backups/lorcana/.$b.tmp" \
+                        && mv "/nas/k3s-backups/lorcana/.$b.tmp" "/nas/k3s-backups/lorcana/$b" \
+                        || fail "copy of $b to NAS failed (dump is on local disk)"
+                      synced=$((synced+1))
+                    fi
+                  done
+                  find /nas/k3s-backups/lorcana -name 'lorcana-*.dump' -mtime +60 -delete
+                  echo "NAS: synced $synced new, kept $(ls /nas/k3s-backups/lorcana/lorcana-*.dump | wc -l) dumps (60d retention)"
               envFrom:
                 - secretRef:
                     name: lorcana-db
@@ -62,6 +81,8 @@ spec:
               volumeMounts:
                 - name: backups
                   mountPath: /backup
+                - name: nas
+                  mountPath: /nas
               resources:
                 requests:
                   cpu: 50m
@@ -76,3 +97,11 @@ spec:
                 # k8s objects (even the namespace) cannot take the dumps with it.
                 path: /mnt/lvm_k3s/backups/lorcana
                 type: DirectoryOrCreate
+            - name: nas
+              hostPath:
+                # The mountpoint itself (always present) rather than a subdir,
+                # so the pod starts and the local dump happens even when the
+                # NAS is down — the script then detects the missing NFS mount
+                # via /proc/mounts and alerts instead of writing to local disk.
+                path: /mnt/nas/odin-storage
+                type: Directory

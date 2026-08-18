@@ -15,9 +15,10 @@ Disney Lorcana TCG card database + collection manager on the ODIN k3s cluster.
 - **Claude:** `lorcana` domain in [odin-mcp](../odin-mcp/) exposes search, stats,
   missing-card, and deck/buildable tools.
 - **Backups:** nightly `pg_dump -Fc` CronJob (02:00 PT) to
-  `/mnt/lvm_k3s/backups/lorcana/` on the host, 30-day retention, dump verified
-  before pruning, ntfy alert on failure. Restore procedure in
-  [docs/ADMIN_USER_GUIDE.md](docs/ADMIN_USER_GUIDE.md) §7.
+  `/mnt/lvm_k3s/backups/lorcana/` on the host (30-day retention), then synced
+  off-host to the Synology NAS at `/mnt/nas/odin-storage/k3s-backups/lorcana/`
+  (60-day retention). Dump verified before any pruning; ntfy alert on failure.
+  Restore procedure in [docs/ADMIN_USER_GUIDE.md](docs/ADMIN_USER_GUIDE.md) §7.
 
 ## Collection import
 

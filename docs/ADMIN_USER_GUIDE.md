@@ -445,9 +445,15 @@ kubectl -n odin-prime exec -i deploy/postgresql -- \
 kubectl -n lorcana scale deploy/lorcana-api --replicas=1
 ```
 
-Off-host copies remain a manual step: `/mnt/lvm_k3s/backups/lorcana/` is on
-the same machine as the database, so sync it to another box (rsync/cloud) if
-you want protection against disk loss, not just bad writes.
+**Off-host copies (automatic):** after the local dump verifies, the same job
+copies any new dumps to the Synology NAS (freya-syn1618, 192.168.1.26) at
+**`/mnt/nas/odin-storage/k3s-backups/lorcana/`** via the NFS share already
+mounted on the node — atomic tmp+rename copies, 60-day retention there (vs
+30 local). The job checks `/proc/mounts` first: if the NAS export isn't
+actually mounted it alerts and fails *visibly* instead of silently writing
+to the local mountpoint directory — the local dump has already landed by
+then, so a NAS outage never costs a backup. Disk-loss protection therefore
+covers everything except simultaneous loss of both machines.
 
 The catalog is always recoverable from Lorcast via the seed job; the
 irreplaceable data is `collection`, `decks`/`deck_cards`, the match log

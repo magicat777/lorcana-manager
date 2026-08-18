@@ -8,7 +8,8 @@ metadata:
     ai.odin.managed: "true"
     ai.odin.component: news-fetch
 spec:
-  schedule: "30 14 * * *"   # 14:30 UTC, half an hour before the daily brief
+  schedule: "30 7 * * *"
+  timeZone: America/Los_Angeles   # 07:30 PT, half an hour before the brief
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -23,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: news-fetch
-              image: localhost:30500/lorcana/api:fastapi-20260817-stats-7
+              image: localhost:30500/lorcana/api:fastapi-20260818-duels-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.fetch_news"]
               envFrom:

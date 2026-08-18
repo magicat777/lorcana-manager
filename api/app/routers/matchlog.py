@@ -7,9 +7,9 @@ from .. import config, db
 
 router = APIRouter()
 
-RESULTS = ("2-0", "2-1", "1-2", "0-2", "DRAW", "BYE")
-WIN_RESULTS = ("2-0", "2-1", "BYE")
-LOSS_RESULTS = ("1-2", "0-2")
+RESULTS = ("2-0", "2-1", "1-2", "0-2", "1-0", "0-1", "DRAW", "BYE")
+WIN_RESULTS = ("2-0", "2-1", "1-0", "BYE")
+LOSS_RESULTS = ("1-2", "0-2", "0-1")
 CARD_KINDS = ("threat_card", "my_dead_card", "my_mvp", "never_drew", "always_dead")
 
 

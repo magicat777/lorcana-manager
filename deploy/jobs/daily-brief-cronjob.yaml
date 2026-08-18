@@ -8,7 +8,8 @@ metadata:
     ai.odin.managed: "true"
     ai.odin.component: daily-brief
 spec:
-  schedule: "0 15 * * *"   # 15:00 UTC = 08:00 PDT morning brief
+  schedule: "0 8 * * *"
+  timeZone: America/Los_Angeles   # 08:00 PT morning brief
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -23,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: brief
-              image: localhost:30500/lorcana/api:fastapi-20260817-stats-7
+              image: localhost:30500/lorcana/api:fastapi-20260818-duels-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.daily_brief"]
               envFrom:

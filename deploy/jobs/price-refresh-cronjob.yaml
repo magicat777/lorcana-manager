@@ -8,7 +8,8 @@ metadata:
     ai.odin.managed: "true"
     ai.odin.component: price-refresh
 spec:
-  schedule: "0 12 * * *"   # nightly 12:00 UTC = 05:00 PDT, before the 13:00 UTC collection snapshot
+  schedule: "0 5 * * *"
+  timeZone: America/Los_Angeles   # 05:00 PT nightly, before the 06:00 snapshot
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -23,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: refresh
-              image: localhost:30500/lorcana/api:fastapi-20260817-stats-7
+              image: localhost:30500/lorcana/api:fastapi-20260818-duels-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.refresh_prices"]
               envFrom:

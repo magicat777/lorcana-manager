@@ -37,8 +37,8 @@ flowchart LR
         subgraph ns [namespace: lorcana]
             W[lorcana-web<br/>nginx + React SPA<br/>NodePort 30710]
             A[lorcana-api<br/>FastAPI :8000<br/>ClusterIP only]
-            CJ1[CronJob: price-refresh<br/>nightly 12:00 UTC]
-            CJ2[CronJob: daily-brief<br/>15:00 UTC = 8am PT]
+            CJ1[CronJob: price-refresh<br/>nightly 05:00 PT]
+            CJ2[CronJob: daily-brief<br/>08:00 PT]
             J1[Job: migrate<br/>run by apply.sh]
             J2[Job: seed<br/>manual]
         end
@@ -114,7 +114,7 @@ lorcana/
 | API image | `localhost:30500/lorcana/api:fastapi-YYYYMMDD` |
 | Web image | `localhost:30500/lorcana/web:nginx-YYYYMMDD` |
 | Secrets | `lorcana-db` (DATABASE_URL, PGPASSWORD), `lorcana-ntfy` (LORCANA_NTFY_URL, optional) |
-| CronJobs | `lorcana-price-refresh` (nightly 12:00 UTC), `lorcana-news-fetch` (14:30 UTC), `lorcana-daily-brief` (15:00 UTC = 8am PT) |
+| CronJobs | `lorcana-price-refresh` (nightly 05:00 PT), `lorcana-news-fetch` (07:30 PT), `lorcana-daily-brief` (08:00 PT) |
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
@@ -321,7 +321,7 @@ real data without running the API locally.
 
 ## 6. Scheduled jobs & data refresh
 
-### 6.1 CronJob: `lorcana-price-refresh` — nightly 12:00 UTC (05:00 PT)
+### 6.1 CronJob: `lorcana-price-refresh` — nightly 05:00 PT
 
 Runs `python -m app.jobs.refresh_prices`. Updates `price_usd`,
 `price_usd_foil`, `legalities`, `raw` on existing cards **and appends one
@@ -338,7 +338,7 @@ Price history also powers **Stats-page trends**: `GET /stats/value-history`
 the oldest snapshot while history is shorter than the window), plus per-card
 sparklines on card detail (`price_history` in the card payload).
 
-### 6.2 CronJob: `lorcana-news-fetch` — daily 14:30 UTC
+### 6.2 CronJob: `lorcana-news-fetch` — daily 07:30 PT
 
 Runs `python -m app.jobs.fetch_news`, half an hour before the brief so fresh
 items land in the morning push. Scrapes the official
@@ -368,7 +368,7 @@ announcement is never missed). Signal items lead the news list for 7 days,
 carry ⚠ RULES / ⚠ NEW SET badges on the web brief, and get a ⚠ prefix in the
 ntfy push.
 
-### 6.3 CronJob: `lorcana-daily-brief` — 15:00 UTC (8:00 PDT / 7:00 PST)
+### 6.3 CronJob: `lorcana-daily-brief` — daily 08:00 PT
 
 Runs `python -m app.jobs.daily_brief`: builds the brief (tonight's league from
 the venue registry, week schedule, last-event recap + "one change" reminder,
@@ -377,8 +377,11 @@ cards, collection totals), prints it to logs (→ Loki), and pushes to ntfy if
 the secret exists. Same content as `GET /api/brief`, the **Brief** web page,
 and the `lorcana_brief` MCP tool.
 
-Note the schedule is UTC cron, so the local delivery time shifts one hour
-across DST changes. Both CronJobs use `concurrencyPolicy: Forbid`.
+All CronJobs carry an explicit `timeZone: America/Los_Angeles` (added
+2026-08-18 after discovering the controller was interpreting bare schedules
+in host-local time, which had the brief firing at 15:00 instead of 08:00) —
+schedules are written in PT and are DST-stable. Both CronJobs use
+`concurrencyPolicy: Forbid`.
 
 ### 6.4 Runbook: new set release
 
@@ -519,7 +522,7 @@ The importer resolves a file's set label via `set_aliases` first, then numeric
 | Rows unmatched: `ambiguous name` | The set-scoped name fallback found duplicates; fix the row's card number in the CSV (matching never guesses). |
 | Migrate job failed on apply.sh | Script prints the last 50 psql lines. Fix the SQL (must be idempotent), re-run `apply.sh`. |
 | New set missing from UI | Seed job hasn't run — §3.4. |
-| New cards have no prices | Price refresh only updates cards it already knows and runs nightly at 12:00 UTC; run it manually (§2) after seeding. |
+| New cards have no prices | Price refresh only updates cards it already knows and runs nightly at 05:00 PT; run it manually (§2) after seeding. |
 | Brief has no price movers | Needs ≥2 daily `price_history` snapshots per card, and only shows owned-card moves ≥ $0.50. |
 | No ntfy push | Secret `lorcana-ntfy` missing (job logs say "log-only"), or phone unsubscribed after a rotation. `kubectl -n lorcana logs job/<latest brief job>`. |
 | Brief "tonight" always empty | Venues need `event_night`/`event_time` set — `PUT /api/venues/{slug}` or via psql. |

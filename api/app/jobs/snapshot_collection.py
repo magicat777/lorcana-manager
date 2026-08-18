@@ -1,5 +1,5 @@
 """Daily collection snapshot job: append one collection_snapshots row so the
-Stats page gets a daily value/size series (prices land nightly via the 12:00 UTC
+Stats page gets a daily value/size series (prices land nightly via the 05:00 PT
 refresh, and quantities move whenever cards are scanned or imported).
 
 Idempotent per day: a rerun on a day that already has a 'daily' snapshot is a

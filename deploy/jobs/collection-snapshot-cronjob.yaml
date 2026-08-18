@@ -8,7 +8,8 @@ metadata:
     ai.odin.managed: "true"
     ai.odin.component: collection-snapshot
 spec:
-  schedule: "0 13 * * *"   # 13:00 UTC = 06:00 PDT daily (after the 12:00 UTC nightly price refresh)
+  schedule: "0 6 * * *"
+  timeZone: America/Los_Angeles   # 06:00 PT daily, after the 05:00 price refresh
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -23,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: snapshot
-              image: localhost:30500/lorcana/api:fastapi-20260817-stats-7
+              image: localhost:30500/lorcana/api:fastapi-20260818-duels-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.snapshot_collection"]
               envFrom:

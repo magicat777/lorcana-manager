@@ -4,7 +4,7 @@ import { get, send } from '../api'
 import type { Deck, EventDetailData, MatchRow, Venue } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
-const RESULTS = ['2-0', '2-1', '1-2', '0-2', 'DRAW', 'BYE']
+const RESULTS = ['2-0', '2-1', '1-2', '0-2', '1-0', '0-1', 'DRAW', 'BYE']
 const SHAPES = ['lore_rush', 'aggro', 'midrange', 'control', 'unclear']
 const TAGS = ['Items', 'Locations', 'Songs+Singer', 'Bodyguard', 'Evasive', 'Ward',
   'Rush', 'Shift', 'Boost', 'Direct removal', 'Board wipe', 'Vinelings']

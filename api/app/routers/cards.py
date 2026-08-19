@@ -142,6 +142,7 @@ class GradedIn(BaseModel):
 
 class GradedUpdate(BaseModel):
     status: str | None = None
+    foil: bool | None = None
     grader: str | None = None
     cert_id: str | None = None
     grade: str | None = None
@@ -220,7 +221,7 @@ def update_graded(copy_id: int, body: GradedUpdate):
     if body.status is not None and body.status not in GRADE_STATUSES:
         raise HTTPException(422, f"status must be one of {GRADE_STATUSES}")
     sets, params = ["updated_at=now()"], []
-    for field in ("status", "grader", "cert_id", "grade", "declared_value", "notes"):
+    for field in ("status", "foil", "grader", "cert_id", "grade", "declared_value", "notes"):
         v = getattr(body, field)
         if v is not None:
             sets.append(f"{field}=%s")

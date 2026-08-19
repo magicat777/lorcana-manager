@@ -3,7 +3,7 @@
 Disney Lorcana TCG card database, collection manager, deck builder, and tournament
 match log, running on the ODIN k3s cluster with Claude integration via odin-mcp.
 
-*Last updated 2026-08-06. Source of truth is always the repo at
+*Last updated 2026-08-18. Source of truth is always the repo at
 `~/Projects/ODIN/lorcana` (this app) and `~/Projects/ODIN/odin-mcp` (Claude tools).*
 
 ---
@@ -39,6 +39,7 @@ flowchart LR
             A[lorcana-api<br/>FastAPI :8000<br/>ClusterIP only]
             CJ1[CronJob: price-refresh<br/>nightly 05:00 PT]
             CJ2[CronJob: daily-brief<br/>08:00 PT]
+            CJ3[CronJobs: backup 02:00 · snapshot 06:00 · news 07:30]
             J1[Job: migrate<br/>run by apply.sh]
             J2[Job: seed<br/>manual]
         end
@@ -89,11 +90,11 @@ flowchart LR
 lorcana/
 ├── api/            FastAPI app (Dockerfile, app/{main,config,db}.py)
 │   └── app/
-│       ├── routers/    cards, collection, imports, decks, matchlog, stats, brief
-│       ├── services/   importer, matching, deck_import, brief
-│       └── jobs/       seed_catalog, refresh_prices, daily_brief, lorcast (client)
+│       ├── routers/    cards, collection, imports, decks, matchlog (+ duels), stats, sim, brief
+│       ├── services/   importer, matching, deck_import, snapshots, brief
+│       └── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, lorcast (client)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–009 idempotent SQL migrations
+├── db/migrations/  000–026 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
 └── docs/           this guide
 ```
@@ -114,7 +115,7 @@ lorcana/
 | API image | `localhost:30500/lorcana/api:fastapi-YYYYMMDD` |
 | Web image | `localhost:30500/lorcana/web:nginx-YYYYMMDD` |
 | Secrets | `lorcana-db` (DATABASE_URL, PGPASSWORD), `lorcana-ntfy` (LORCANA_NTFY_URL, optional) |
-| CronJobs | `lorcana-price-refresh` (nightly 05:00 PT), `lorcana-news-fetch` (07:30 PT), `lorcana-daily-brief` (08:00 PT) |
+| CronJobs (all PT, explicit `timeZone`) | `lorcana-db-backup` (02:00), `lorcana-price-refresh` (05:00), `lorcana-collection-snapshot` (06:00), `lorcana-news-fetch` (07:30), `lorcana-daily-brief` (08:00) |
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
@@ -164,15 +165,20 @@ buildah bud --format docker -t localhost:30500/lorcana/web:nginx-YYYYMMDD web/
 buildah push --tls-verify=false localhost:30500/lorcana/web:nginx-YYYYMMDD
 ```
 
-Then set the new tags in the manifests. **The API tag appears in FOUR files**
+Then set the new tags in the manifests. **The API tag appears in SIX files**
 (the deployment plus every job that runs `python -m app.jobs.*`):
 
 - `deploy/api/deployment.yaml`
 - `deploy/jobs/seed-job.yaml`
 - `deploy/jobs/price-refresh-cronjob.yaml`
 - `deploy/jobs/daily-brief-cronjob.yaml`
+- `deploy/jobs/news-fetch-cronjob.yaml`
+- `deploy/jobs/collection-snapshot-cronjob.yaml`
 
-The web tag appears only in `deploy/web/deployment.yaml`.
+(`db-backup-cronjob.yaml` uses the odin-prime postgres image, not the API
+image.) The web tag appears only in `deploy/web/deployment.yaml`. **Never
+reuse a tag** — `imagePullPolicy: IfNotPresent` means a reused tag silently
+runs the node's cached image; use date + session-distinct suffixes.
 
 ### 3.3 Run apply.sh
 
@@ -302,7 +308,7 @@ Pick the smallest hammer:
 
 | Change | What to do |
 |---|---|
-| **API code** (`api/app/**`) | Build+push new api image → bump tag in **all four** files (§3.2) → `kubectl apply -f deploy/api/deployment.yaml` (or full `apply.sh`). CronJobs pick the new tag up on their next run. |
+| **API code** (`api/app/**`) | Build+push new api image → bump tag in **all six** files (§3.2) → `kubectl apply -f deploy/api/deployment.yaml` (or full `apply.sh`). CronJobs pick the new tag up on their next run. |
 | **Web UI** (`web/src/**`) | Build+push new web image → bump tag in `deploy/web/deployment.yaml` → `kubectl apply -f deploy/web/deployment.yaml`. Hard-refresh the browser (assets are content-hashed, `index.html` is not cached). |
 | **New migration** (`db/migrations/NNN_*.sql`) | Write it idempotent (`IF NOT EXISTS` / guarded `UPDATE`) → `./deploy/apply.sh` (steps 5–6 rebuild the ConfigMap and rerun the migrate job). No image rebuild needed. |
 | **Schedule / job spec** | Edit the yaml → `kubectl apply -k deploy/` (or `apply.sh`). |
@@ -383,7 +389,26 @@ in host-local time, which had the brief firing at 15:00 instead of 08:00) —
 schedules are written in PT and are DST-stable. Both CronJobs use
 `concurrencyPolicy: Forbid`.
 
-### 6.4 Runbook: new set release
+### 6.4 CronJob: `lorcana-collection-snapshot` — daily 06:00 PT
+
+Runs `python -m app.jobs.snapshot_collection`: appends one
+`collection_snapshots` row — total copies, unique cards, value, and
+rarity/ink/set/type/cost breakdowns (JSONB) — an hour after the price
+refresh, so each day's snapshot values the collection at that morning's
+prices. Idempotent per day. A second snapshot (`source='import'`) is written
+by every real (non-dry-run) upload at its exact timestamp, so upload jumps
+chart where they actually happened. Feeds the Stats page's "Collection over
+time" panel (`GET /stats/snapshots`). Historical totals were backfilled from
+the `imports` audit trail (mig 020) — those rows have no value/breakdown and
+the charts skip them for the metrics they lack.
+
+### 6.5 CronJob: `lorcana-db-backup` — nightly 02:00 PT
+
+`pg_dump -Fc` with verify-before-prune, local 30-day + Synology NAS 60-day
+retention, and ntfy alert on failure — full detail and restore procedures in
+§7.1.
+
+### 6.6 Runbook: new set release
 
 1. `kubectl -n lorcana delete job lorcana-seed --ignore-not-found && kubectl apply -f deploy/jobs/seed-job.yaml` — pulls the new set + cards.
 2. Check whether the new set should be Core-legal; if the rotation window
@@ -471,15 +496,21 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `set_aliases` | Normalized Dreamborn set-label → set mapping. Auto-rows from seed + hand rows from mig 002. |
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
-| `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary. |
-| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); `wanted` want-list flag (mig 013); provenance `created_source`/`updated_source` ∈ api/webui/mcp (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
+| `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary — plus `note` (annotate uploads, e.g. "sealed winnings") and `diff` (per-card before→after, mig 019). |
+| `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); `wanted` want-list flag (mig 013); `sim_only` opponent decks (mig 016); `strategy` archetype label (mig 022); provenance `created_source`/`updated_source` ∈ api/webui/mcp/scout (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
+| `deck_events` | Deck lifecycle audit (mig 015): created/cloned/built/unbuilt/pool/scouted with reasons — answers "where did my copies go". |
 | `deck_pool` | Sealed decks only (mig 011): the cards opened from packs, grows weekly in a league. Sealed decks validate/build against their pool, never the collection, and are excluded from `in_use` allocation. |
 | `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
-| `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','DRAW','BYE'), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
+| `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','1-0','0-1','DRAW','BYE' — single-game results for duels.ink, mig 024), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
 | `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers. |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
+| `collection_snapshots` | Daily + per-import collection state (migs 019/020): totals, value, rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts. |
+| `sim_results` / `sim_deck_runs` | Sim engine (migs 012/013/017/021, Lorcana-Sim repo): nightly matchup aggregates / per-deck runs with status, win rates, analysis JSONB. |
+| `engine_coverage` | Which printings the sim engine plays faithfully (mig 018); published by the engine's export tool. |
+| `duels_game_logs` | Full duels.ink game logs (mig 025): raw text + parsed plays/quests/lore per seat. FKs SET NULL — deleting events/matches never destroys game data. Feeds coverage priority, scouting, replay validation. |
+| `replay_validations` | Engine replay verdicts per game per build (mig 026): ok/divergences — real games as regression tests. |
 
 Allocation ("free copies") is **not** a view — it's inline SQL in
 `api/app/routers/cards.py` and `decks.py`:
@@ -576,14 +607,24 @@ this is the manual way to adjust quantities without a re-import.
 
 ### 9.3 Stats (`/stats`)
 
-Collection totals (unique owned / catalog size, normal + foil copies, estimated
-value), a **collection value over time** chart (today's collection at each
-daily price snapshot, hover any point for the value), **price movers** tables
-(owned-card gainers/losers with a 30/90-day toggle), plus a panel per set with
-completion % bar, playset progress (4+ copies), copy count, and set value.
-Card detail pages get nightly price sparklines (normal + foil) once a card has
-two snapshots. Deck composition counts dual-ink cards as their own "A/B"
-bucket so ink counts always sum to the deck total.
+Collection totals (unique owned / catalog size, normal + foil copies,
+estimated value), then the **Collection over time** panel driven by
+`collection_snapshots`:
+
+- **Metric toggles are multi-select** — Value ($), Total copies, Unique cards
+  each render their own stacked chart.
+- **Breakdown toggles** (Total / rarity / ink / set / card type / ink cost)
+  apply to every visible chart. A breakdown with fewer than two snapshot
+  points renders as a **current-composition bar chart** until trend history
+  accrues (pre-feature backfill only recorded totals).
+- **Timescale toggles**: Week / Month (default) / 3 months / 6 months / Year
+  / All. Import snapshots appear as dotted markers — hover for the upload
+  note.
+
+Below it: **price movers** tables (owned-card gainers/losers, 30/90-day
+toggle) and a panel per set with completion % bar, playset progress (4+
+copies), copy count, and set value. Card detail pages get nightly price
+sparklines (normal + foil) once a card has two snapshots.
 
 ### 9.4 Upload (`/upload`)
 
@@ -603,9 +644,28 @@ legacy `Name, Normal, Foil, Set, Card Number`).
 - The report lists every unmatched row with its reason (unknown set, no such
   number, ambiguous name); unmatched rows are never guessed. Import history at
   the bottom is the `imports` audit table.
+- **Notes & diffs:** an optional note field annotates the upload ("additional
+  cards from sealed competition"); every import (dry runs included) records a
+  per-card before→after **diff**. In history, click a row's change count to
+  expand the diff, click the Note column to annotate after the fact.
+- **Sealed extraction:** when an import added cards, the diff offers
+  **⧉ Copy added cards** (clipboard text list) and a sealed-deck picker with
+  **→ Add to sealed pool** — pushes exactly the positive deltas into that
+  deck's pool (`POST /imports/{id}/to-pool`), the league-night workflow:
+  scan packs → Merge upload with a note → push the diff into the pool.
+- Every real import also writes a `collection_snapshots` row at its exact
+  timestamp, so the Stats chart shows the jump where it happened.
 
 ### 9.5 Decks (`/decks`, `/decks/{id}`)
 
+- **The deck list is a sortable table**: # (deck id — what sim tools
+  reference), name (→ detail), type (constructed/sealed/sim), card count,
+  ink dots, an inline **strategy** dropdown (Aggro/Rush/Midrange/Tempo/
+  Control/Combo/Ramp/Damage/Mill/Toolbox/Other), an inline **notes** field
+  (saved on blur/Enter via `PATCH /decks/{id}/meta`), and a **⬇ CSV**
+  download per deck (Dreamborn-compatible variant-row schema — imports
+  straight back into Dreamborn.ink or our own Upload page). Click any header
+  to sort ascending/descending.
 - **Create:** empty deck by name, or paste a Dreamborn text list
   (`4 Elsa - Spirit of Winter` per line) and import. Name matching prefers a
   print you own, then a **Core-legal** print, then earliest release (promo
@@ -660,7 +720,8 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   `sets.core_legal` truth, with per-card violations), full card table,
   composition (type counts, total lore, ink counts, inkable split, avg cost)
   and cost curve. Buttons: print, copy text list, download `.txt`
-  (Dreamborn-compatible, re-importable).
+  (Dreamborn-compatible, re-importable), download `.csv`
+  (`GET /decks/{id}/export.csv`, Dreamborn's own variant-row schema).
 
 ### 9.6 Match Log (`/matches`, `/matches/{id}`)
 
@@ -669,7 +730,8 @@ pairings — never at the table.**
 
 - **Start event:** date, venue (registry dropdown, nearest-first; "Other…" for
   free text), deck + version, rounds, players, entry fee.
-- **Log round (~90 seconds):** opponent, result (2-0/2-1/1-2/0-2/DRAW/BYE),
+- **Log round (~90 seconds):** opponent, result (2-0/2-1/1-2/0-2/DRAW/BYE,
+  plus 1-0/0-1 for single-game online matches),
   their two inks, archetype shape (lore_rush/aggro/midrange/control/unclear),
   "they ran" tags, up to 4 threat cards, per-game play/draw + W/L with loss
   mode on losses (race/board/flood/screw/time), your dead card and MVP, and a
@@ -687,6 +749,13 @@ pairings — never at the table.**
 This data feeds the **cut list** (cards never MVP, sorted by dead mentions —
 MCP `lorcana_cut_list`), the **local meta** table (ink-pair frequencies +
 losses), and the daily brief's deck watch.
+
+**duels.ink (online play):** the venue registry includes `duels-ink`
+("duels.ink (online)"), and pasting a duels.ink game log to any
+MCP-connected Claude (`lorcana_import_duels_log`) files the match here as a
+1-0/0-1 round with auto-detected seat, inferred opponent inks, threat cards,
+and the full turn log stored in `duels_game_logs` for the sim-engine
+pipeline (§10).
 
 **Match Stats** ("Win-rate analytics →" from the Match Log): overall record
 and win rate, on-play vs on-draw, game 1 vs games 2–3, how games are lost
@@ -723,6 +792,12 @@ be dictated conversationally between rounds.
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
 | `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list. |
 | `lorcana_sim_run` / `lorcana_sim_runs` / `lorcana_sim_result` | Queue engine simulations (vs baselines or a sim-only opponent deck), list runs, and fetch results incl. the teacher pass (turning points of a typical loss) — coaching raw material. |
+| `lorcana_sim_compare` / `lorcana_sim_coverage` | Compare two runs (Wilson CIs, paired McNemar, comparability gates) / whole-catalog engine coverage. |
+| `lorcana_import_duels_log` | Paste a raw duels.ink game log: parses winner/turns/lore/plays, auto-detects your seat by decklist overlap, infers opponent inks from the catalog, files a 1-0/0-1 match under the day's duels.ink event, and stores the full log. |
+| `lorcana_coverage_priority` | Engine-authoring priority from REAL play: unspecced cards ranked by how often they hit the table in stored logs. |
+| `lorcana_scout_deck` | Auto-draft a sim-only opponent deck from real games vs an ink pair (copy counts from max plays seen, engine-covered filler to 60); re-scouting updates in place. |
+| `lorcana_sim_calibration` | Sim win rate vs real record per matchup, Wilson CIs both sides; DIVERGES when intervals don't overlap. |
+| `lorcana_replay_status` | Replay-validation health per engine build + open divergences (see docs/SIM_ENGINE_HANDOFF.md). |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Permanent delete (confirm with the user first). |
@@ -747,10 +822,13 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /cards` | Paged search: `q, set, ink, rarity, type, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
 | `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free`. |
 | `PUT /collection/{card_id}` | Set absolute `{qty_normal, qty_foil}`. |
-| `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force`. 413 >10 MiB, 409 duplicate merge, 422 bad format. |
-| `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows. |
+| `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force, note`. 413 >10 MiB, 409 duplicate merge, 422 bad format. Real imports also snapshot the collection. |
+| `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows + per-card diff. |
+| `PATCH /imports/{id}` | Set/clear the upload note after the fact. |
+| `POST /imports/{id}/to-pool` | Push the import's added cards (positive diff deltas) into a sealed deck's pool. |
 | `GET /stats`, `GET /stats/sets` | Collection totals / per-set stats. |
-| `GET /stats/value-history` | Collection value at each weekly price snapshot. |
+| `GET /stats/snapshots?days=` | Collection snapshots (daily + per-import) with breakdowns — the Stats history charts. |
+| `GET /stats/value-history` | Collection value at each daily price snapshot. |
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
 | `GET /brief` | Structured brief + rendered `text`. |
@@ -760,6 +838,8 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `POST /decks/{id}/pool/import` | Add/replace a sealed deck's pool from a text list. |
 | `DELETE /decks/{id}/pool/{card_id}` | Remove a card from a sealed pool. |
 | `GET /decks/{id}/export` | Text list + composition + Core legality. |
+| `GET /decks/{id}/export.csv` | Dreamborn-compatible CSV download (variant-row schema). |
+| `PATCH /decks/{id}/meta` | Inline strategy/notes update (empty string clears). |
 | `PUT /decks/{id}/in_use` | Toggle allocation; 409 lists donor decks + `after_pull_missing`; `pull_from_decks=true` un-builds donors, `force=true` overrides. |
 | `POST /decks/{id}/clone` | Duplicate as a new unbuilt version. |
 | `GET /allocation-conflicts` | Cards claimed by built decks beyond owned copies. |
@@ -772,3 +852,10 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck). |
 | `PUT /decks/{id}/wanted` | Flag/unflag a deck for the want list. |
 | `GET /wantlist` | Aggregated, priced shopping list across wanted decks (+ `text` export). |
+| `POST/GET /duels/logs`, `GET /duels/logs/{id}` | Store / list / read full duels.ink game logs. |
+| `GET /duels/coverage-priority` | Cards seen in real games vs engine coverage, ranked by play frequency. |
+| `POST /duels/scout` | Auto-draft a sim-only opponent deck from real games (`inks`, `shape`, `handle`, `save`, `covered_only`). |
+| `GET /duels/replay-corpus` | Real-game corpus for the engine's replay validator (card_map + replayable flag). |
+| `POST /duels/replay-validations`, `GET /duels/replay-status` | Engine posts per-game verdicts / per-build health + divergences. |
+| `GET /sim/calibration` | Sim vs real win rates per matchup, Wilson CIs, divergence verdicts. |
+| `/sim/*` (runs, results, compare, coverage) | Sim-engine pipeline endpoints — see `api/app/routers/sim.py` and the Lorcana-Sim repo. |

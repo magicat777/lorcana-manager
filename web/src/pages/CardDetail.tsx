@@ -6,6 +6,83 @@ import RarityIcon from '../components/RarityIcon'
 import Sparkline from '../components/Sparkline'
 import type { Card } from '../types'
 
+interface WantListRow {
+  id: number
+  name: string
+  cards: { card_id: string; qty: number; source: string }[]
+}
+
+function AddToWantList({ cardId }: { cardId: string }) {
+  const [lists, setLists] = useState<WantListRow[]>([])
+  const [sel, setSel] = useState<number | 'new' | ''>('')
+  const [newName, setNewName] = useState('')
+  const [status, setStatus] = useState('')
+
+  const reload = () => get<WantListRow[]>('/wantlists').then(setLists).catch(() => {})
+  useEffect(() => {
+    reload()
+  }, [])
+
+  const add = async () => {
+    try {
+      let listId: number
+      let listName: string
+      if (sel === 'new') {
+        if (!newName.trim()) return
+        const wl = await send<{ id: number; name: string }>('POST', '/wantlists', { name: newName.trim() })
+        listId = wl.id
+        listName = wl.name
+        setNewName('')
+      } else if (sel === '') {
+        return
+      } else {
+        listId = sel
+        listName = lists.find((l) => l.id === sel)?.name ?? ''
+      }
+      const existing = lists.find((l) => l.id === listId)?.cards
+        .find((c) => c.card_id === cardId && c.source === 'manual')?.qty ?? 0
+      const r = await send<{ qty: number }>('PUT', `/wantlists/${listId}/cards`,
+        { card_id: cardId, qty: existing + 1 })
+      setStatus(`✓ ${r.qty}x on "${listName}"`)
+      setSel(listId)
+      reload()
+      setTimeout(() => setStatus(''), 2500)
+    } catch (e) {
+      setStatus(String((e as Error).message ?? e))
+    }
+  }
+
+  return (
+    <div className="panel">
+      <h3 style={{ marginTop: 0 }}>Want it</h3>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={sel} onChange={(e) => {
+          const v = e.target.value
+          setSel(v === 'new' ? 'new' : v === '' ? '' : Number(v))
+        }}>
+          <option value="">pick a want list…</option>
+          {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          <option value="new">➕ New list…</option>
+        </select>
+        {sel === 'new' && (
+          <input placeholder='List name — e.g. "Foils"' value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') add() }}
+            style={{ minWidth: '22ch' }} />
+        )}
+        <button className="secondary" disabled={sel === '' || (sel === 'new' && !newName.trim())}
+          onClick={add}>
+          Add
+        </button>
+        {status && <span className={status.startsWith('✓') ? 'ok' : 'error'}>{status}</span>}
+      </div>
+      <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
+        Each click adds a copy. Manage lists on the <Link to="/wantlist">Want List</Link> page.
+      </p>
+    </div>
+  )
+}
+
 export default function CardDetail() {
   const { set, number } = useParams()
   const [card, setCard] = useState<Card | null>(null)
@@ -123,6 +200,7 @@ export default function CardDetail() {
               <button className="secondary" disabled={saving} onClick={() => bump('qty_foil', 1)}>+</button>
             </div>
           </div>
+          <AddToWantList cardId={card.id} />
         </div>
       </div>
     </div>

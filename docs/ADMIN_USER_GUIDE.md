@@ -607,6 +607,15 @@ panel (which decks use it, `◈ built` markers, allocated vs free copy counts),
 and an **In collection** panel with −/+ steppers for normal and foil counts —
 this is the manual way to adjust quantities without a re-import.
 
+A **Collector grading** panel appears whenever the card has copies in the
+grading pipeline (mig 030): per-copy status (RAW/SUBMITTED/GRADED), grader +
+grade + cert, and declared value. Submitted/graded copies are collector
+assets, not player assets — they're excluded from `qty_free` here and from
+every deck-building availability count, so slabbing a copy visibly shrinks
+what decks can claim. `raw` means earmarked but still playable until
+submitted. Manage the lifecycle via Claude (`lorcana_grade_card`) or the
+`/graded` API; creation is capped at the owned count per finish.
+
 Below it, a **Want it** panel adds the card straight to a named want list: a
 dropdown of existing lists plus **➕ New list…** to create one inline; each
 Add stacks another copy (current qty is read first, so repeat clicks go
@@ -830,7 +839,7 @@ be dictated conversationally between rounds.
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Delete (confirm with the user first) — tombstoned with the full card list. |
 | `lorcana_restore_deck` | Undo a delete: resurrect from the tombstone by the ORIGINAL deck id (new id assigned; refuses double-restores). |
-| `lorcana_graded` / `lorcana_grade_card` | Collector grading portfolio / track a copy through raw→submitted→graded (grader, cert, grade, declared value; capped at owned count; remove returns it to the player pool). |
+| `lorcana_graded` / `lorcana_grade_card` | Collector grading portfolio / track a copy through raw→submitted→graded (grader, cert, grade, declared value; capped at owned count; remove returns it to the player pool). Update semantics: omitted = untouched, `''` clears, 0 is a real value; `card`+`copy_id` together cross-check and refuse on mismatch; foil correctable on update. |
 | `lorcana_venues` | Venue registry with slugs, nights, times. |
 | `lorcana_log_event` | Start an event (fuzzy venue + deck-name resolution → returns event id). |
 | `lorcana_log_match` | Log a round from shorthand — games parse from text like `"G1 play W; G2 draw L race"`; inks, shape, tags, threats, dead/MVP cards. `overwrite=True` is a **full REPLACE** of the round; identical retries return success without writing. |

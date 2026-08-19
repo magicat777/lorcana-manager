@@ -116,8 +116,10 @@ th, td { text-align: left; padding: 0.4rem 0.7rem; border-bottom: 1px solid var(
 th { color: var(--muted); font-weight: 600; }
 tr.bad td { color: var(--danger); }
 
-.detail { display: flex; gap: 2rem; flex-wrap: wrap; }
-.detail img { width: 320px; border-radius: 14px; }
+/* align-items: flex-start — flex default is stretch, which pulled the card
+   image to the text column's full height and distorted the art. */
+.detail { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
+.detail img { width: 320px; height: auto; aspect-ratio: 63/88; object-fit: cover; border-radius: 14px; }
 .statrow { display: flex; gap: 1.6rem; flex-wrap: wrap; margin: 0.8rem 0; }
 .stat .k { color: var(--muted); font-size: 0.8rem; }
 .stat .v { font-size: 1.25rem; font-weight: 600; }

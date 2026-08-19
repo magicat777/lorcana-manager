@@ -438,3 +438,92 @@ def cut_list(deck_id: int):
         "never_mvp": [c for c in cards if not c["ever_mvp"]],
         "cards": cards,
     }
+
+
+# --- duels.ink game logs (full turn data, persisted at import) ----------------
+
+class DuelsLogIn(BaseModel):
+    raw_log: str
+    parsed: dict                       # {plays:{"1":{card:n},"2":{}}, quests, lore, ...}
+    match_id: int | None = None
+    event_id: int | None = None
+    my_player: int | None = None
+    winner: int | None = None
+    first_player: int | None = None
+    turns: int | None = None
+
+
+@router.post("/duels/logs", status_code=201)
+def add_duels_log(body: DuelsLogIn):
+    from psycopg.types.json import Jsonb
+    row = db.query_one(
+        """INSERT INTO duels_game_logs
+             (match_id, event_id, my_player, winner, first_player, turns, raw_log, parsed)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (body.match_id, body.event_id, body.my_player, body.winner,
+         body.first_player, body.turns, body.raw_log, Jsonb(body.parsed)))
+    return {"id": row["id"]}
+
+
+@router.get("/duels/logs")
+def list_duels_logs(limit: int = 100):
+    return db.query(
+        """SELECT id, imported_at, match_id, event_id, my_player, winner,
+                  first_player, turns
+           FROM duels_game_logs ORDER BY id DESC LIMIT %s""", (min(limit, 500),))
+
+
+@router.get("/duels/logs/{log_id}")
+def duels_log_detail(log_id: int):
+    row = db.query_one("SELECT * FROM duels_game_logs WHERE id=%s", (log_id,))
+    if not row:
+        raise HTTPException(404, "no such log")
+    return row
+
+
+@router.get("/duels/coverage-priority")
+def duels_coverage_priority():
+    """Sim-engine authoring priority from REAL play: every card seen in stored
+    duels.ink logs (both seats — the engine must play both sides), ranked by
+    play frequency, split into engine-covered vs unspecced. Names that resolve
+    to no catalog card land in `unmatched` (usually parser or promo quirks)."""
+    logs = db.query("SELECT id, parsed FROM duels_game_logs")
+    plays: dict[str, dict] = {}   # lower(name) -> {name, plays, games:set}
+    for lg in logs:
+        for seat in ("1", "2"):
+            for name, n in ((lg["parsed"].get("plays") or {}).get(seat) or {}).items():
+                e = plays.setdefault(name.lower(), {"name": name, "plays": 0, "games": set()})
+                e["plays"] += int(n)
+                e["games"].add(lg["id"])
+    if not plays:
+        return {"games": 0, "names_seen": 0, "covered": [], "unspecced": [], "unmatched": []}
+
+    keys = list(plays)
+    cards = db.query(
+        """SELECT lower(c.full_name) AS fkey, lower(c.name) AS nkey, c.id,
+                  c.full_name, s.code AS set_code, c.collector_number,
+                  EXISTS (SELECT 1 FROM engine_coverage ec WHERE ec.card_id = c.id) AS covered
+           FROM cards c JOIN sets s ON s.id = c.set_id
+           WHERE lower(c.full_name) = ANY(%s) OR lower(c.name) = ANY(%s)
+           ORDER BY s.released_at DESC NULLS LAST""", (keys, keys))
+    by_key: dict[str, list] = {}
+    for c in cards:
+        by_key.setdefault(c["fkey"], []).append(c)
+        by_key.setdefault(c["nkey"], []).append(c)
+
+    covered, unspecced, unmatched = [], [], []
+    for key, e in plays.items():
+        cands = by_key.get(key)
+        entry = {"name": e["name"], "plays": e["plays"], "games": len(e["games"])}
+        if not cands:
+            unmatched.append(entry)
+            continue
+        hit = next((c for c in cands if c["covered"]), None) or cands[0]
+        entry.update({"card_id": hit["id"], "full_name": hit["full_name"],
+                      "set_code": hit["set_code"],
+                      "collector_number": hit["collector_number"]})
+        (covered if hit["covered"] else unspecced).append(entry)
+    for bucket in (covered, unspecced, unmatched):
+        bucket.sort(key=lambda x: (-x["plays"], x["name"]))
+    return {"games": len(logs), "names_seen": len(plays),
+            "covered": covered, "unspecced": unspecced, "unmatched": unmatched}

@@ -827,7 +827,8 @@ be dictated conversationally between rounds.
 | `lorcana_replay_status` | Replay-validation health per engine build + open divergences (see docs/SIM_ENGINE_HANDOFF.md). |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
-| `lorcana_delete_deck` | Delete (confirm with the user first) — tombstoned with the full card list, recoverable. |
+| `lorcana_delete_deck` | Delete (confirm with the user first) — tombstoned with the full card list. |
+| `lorcana_restore_deck` | Undo a delete: resurrect from the tombstone by the ORIGINAL deck id (new id assigned; refuses double-restores). |
 | `lorcana_venues` | Venue registry with slugs, nights, times. |
 | `lorcana_log_event` | Start an event (fuzzy venue + deck-name resolution → returns event id). |
 | `lorcana_log_match` | Log a round from shorthand — games parse from text like `"G1 play W; G2 draw L race"`; inks, shape, tags, threats, dead/MVP cards. `overwrite=True` is a **full REPLACE** of the round; identical retries return success without writing. |
@@ -861,6 +862,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /brief` | Structured brief + rendered `text`. |
 | `GET/POST /decks`, `GET/PUT/DELETE /decks/{id}` | Deck CRUD (name unique; PUT replaces the whole card list). DELETE writes a tombstone first (`?source=webui\|mcp\|api`). |
 | `GET /deck-tombstones`, `GET /deck-tombstones/{id}` | Deleted decks (mig 029) with full recipes — explains deck-id gaps (ids are never reused); detail carries the recoverable card list. |
+| `POST /deck-tombstones/{id}/restore` | Resurrect a deleted deck as a NEW deck from the tombstone recipe (optional `name` when the original is taken; missing catalog cards skipped + reported; tombstone gains `restored_deck_id`). |
 | `POST /decks/import` | Text list import: `overwrite`, `strict` (422 with warnings), idempotent (`unchanged`). |
 | `GET /decks/{id}/buildable` | Free-copy check with per-card shortfalls (sealed decks: pool check instead). |
 | `POST /decks/{id}/pool/import` | Add/replace a sealed deck's pool from a text list. |

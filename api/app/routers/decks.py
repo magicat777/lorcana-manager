@@ -331,9 +331,62 @@ def list_deck_tombstones(limit: int = 50):
     (ids are never reused). `cards` in the detail is the full recipe."""
     return db.query(
         """SELECT id, deck_id, name, format, sim_only, strategy, card_total,
-                  deleted_at, deleted_source
+                  deleted_at, deleted_source, restored_deck_id
            FROM deck_tombstones ORDER BY deleted_at DESC LIMIT %s""",
         (min(limit, 200),))
+
+
+class TombRestoreIn(BaseModel):
+    name: str = ""                     # default: the original name
+
+
+@router.post("/deck-tombstones/{tomb_id}/restore", status_code=201)
+def restore_deck_tombstone(tomb_id: int, body: TombRestoreIn):
+    """Resurrect a deleted deck from its tombstone recipe as a NEW deck (ids
+    are never reused — the tombstone keeps pointing at the historical id and
+    gains restored_deck_id). Cards no longer in the catalog are skipped and
+    reported."""
+    t = db.query_one("SELECT * FROM deck_tombstones WHERE id=%s", (tomb_id,))
+    if not t:
+        raise HTTPException(404, "no such tombstone")
+    wanted_name = body.name.strip() or t["name"]
+    known = {r["id"] for r in db.query(
+        "SELECT id FROM cards WHERE id = ANY(%s)",
+        ([c["card_id"] for c in (t["cards"] or [])] or [""],))}
+    skipped = [c["full_name"] for c in (t["cards"] or []) if c["card_id"] not in known]
+    with db.pool.connection() as conn, conn.cursor() as cur:
+        new_id = None
+        for candidate in (wanted_name, f"{wanted_name} (restored)"):
+            try:
+                cur.execute(
+                    """INSERT INTO decks (name, notes, created_source, format,
+                                          sim_only, strategy)
+                       VALUES (%s,%s,'restore',%s,%s,%s) RETURNING id""",
+                    (candidate, t.get("notes"), t.get("format") or "constructed",
+                     bool(t.get("sim_only")), t.get("strategy")))
+                new_id = cur.fetchone()["id"]
+                break
+            except Exception:
+                conn.rollback()
+        if new_id is None:
+            raise HTTPException(
+                409, f"deck names {wanted_name!r} and '{wanted_name} (restored)' both "
+                     "exist — pass a different name")
+        for c in (t["cards"] or []):
+            if c["card_id"] in known:
+                cur.execute(
+                    "INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (%s,%s,%s)",
+                    (new_id, c["card_id"], c["qty"]))
+        cur.execute(
+            "INSERT INTO deck_events (deck_id, action, detail) VALUES (%s,'restored',%s)",
+            (new_id, f"from tombstone #{tomb_id} (was deck #{t['deck_id']}, "
+                     f"deleted {t['deleted_at']:%Y-%m-%d})"))
+        cur.execute("UPDATE deck_tombstones SET restored_deck_id=%s WHERE id=%s",
+                    (new_id, tomb_id))
+        conn.commit()
+    result = _deck_row(new_id)
+    result["skipped_cards"] = skipped
+    return result
 
 
 @router.get("/deck-tombstones/{tomb_id}")

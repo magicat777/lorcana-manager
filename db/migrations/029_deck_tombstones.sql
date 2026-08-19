@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS deck_tombstones (
   deleted_source text                 -- webui | mcp | api
 );
 CREATE INDEX IF NOT EXISTS deck_tombstones_deck_idx ON deck_tombstones (deck_id);
+
+-- Restore support: a restored tombstone records where its recipe went.
+ALTER TABLE deck_tombstones ADD COLUMN IF NOT EXISTS restored_deck_id bigint;

@@ -19,7 +19,7 @@ export default function Decks() {
 
   const [conflicts, setConflicts] = useState<AllocationConflict[]>([])
   const [tombstones, setTombstones] = useState<
-    { id: number; deck_id: number; name: string; card_total: number; deleted_at: string; deleted_source: string }[]
+    { id: number; deck_id: number; name: string; card_total: number; deleted_at: string; deleted_source: string; restored_deck_id: number | null }[]
   >([])
   // Default: newest deck first (ids are a never-reused sequence, so id
   // order IS creation order). Click any header to re-sort.
@@ -210,6 +210,20 @@ export default function Decks() {
                   <td>{t.name}</td>
                   <td className="muted">{t.card_total} cards</td>
                   <td className="muted">deleted {new Date(t.deleted_at).toLocaleDateString()} via {t.deleted_source}</td>
+                  <td>
+                    {t.restored_deck_id ? (
+                      <Link className="muted" to={`/decks/${t.restored_deck_id}`}>restored → #{t.restored_deck_id}</Link>
+                    ) : (
+                      <button className="secondary" onClick={async () => {
+                        try {
+                          const d = await send<Deck>('POST', `/deck-tombstones/${t.id}/restore`, {})
+                          nav(`/decks/${d.id}`)
+                        } catch (e) {
+                          setError(String((e as Error).message ?? e))
+                        }
+                      }}>↩ Restore</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

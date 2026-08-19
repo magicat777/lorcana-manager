@@ -562,6 +562,7 @@ def wantlist():
     """Shopping list: missing copies aggregated across WANTED constructed decks
     (not yet built), needed on top of copies already allocated to built decks.
     Assumes you want every flagged deck buildable simultaneously."""
+    skips = {r["card_id"] for r in db.query("SELECT card_id FROM wantlist_skips")}
     rows = db.query(
         """SELECT c.id AS card_id, c.full_name, s.code AS set_code,
                   c.collector_number, c.rarity, c.price_usd,
@@ -580,10 +581,15 @@ def wantlist():
            LEFT JOIN collection col ON col.card_id = c.id
            GROUP BY c.id, c.full_name, s.code, c.collector_number, c.rarity,
                     c.price_usd, col.qty_normal, col.qty_foil""")
-    cards = []
+    cards, skipped = [], []
     for r in rows:
         need = max(0, r["qty_wanted"] + r["allocated"] - r["owned"])
         if not need:
+            continue
+        if r["card_id"] in skips:
+            skipped.append({"card_id": r["card_id"], "full_name": r["full_name"],
+                            "set_code": r["set_code"],
+                            "collector_number": r["collector_number"], "need": need})
             continue
         price = float(r["price_usd"]) if r["price_usd"] is not None else None
         cards.append({**r, "need": need,
@@ -597,11 +603,199 @@ def wantlist():
         "cards": cards,
         "total_cost": round(sum(c["line_cost"] or 0 for c in cards), 2),
         "unpriced": sum(1 for c in cards if c["line_cost"] is None),
+        "skipped": skipped,
         "text": "\n".join(
             f"{c['need']} {c['full_name']} [{c['set_code']}/{c['collector_number']}]"
             + (f" — ${c['line_cost']}" if c["line_cost"] is not None else "")
             for c in cards),
+        "tcg_text": _tcg_text(cards),
     }
+
+
+# --- TCGplayer mass-entry export -------------------------------------------
+
+def _tcg_denoms() -> dict:
+    """Printed card-code denominator per set = highest collector number among
+    standard rarities (Enchanted/Epic/Iconic live above it — e.g. set 13 is
+    N/207 on the card while the catalog holds 245 printings)."""
+    return {r["set_id"]: r["denom"] for r in db.query(
+        """SELECT set_id,
+                  max(NULLIF(regexp_replace(collector_number,'\\D','','g'),'')::int)
+                    FILTER (WHERE rarity NOT IN ('Enchanted','Epic','Iconic')) AS denom
+           FROM cards GROUP BY set_id""")}
+
+
+def _tcg_text(cards: list[dict]) -> str:
+    """TCGplayer Mass Entry lines using the printed card code — the same
+    dreamborn.ink-style '(17/207)' identity TCGplayer product names carry,
+    which matches uniquely where bare names mis-parse."""
+    denoms = _tcg_denoms()
+    lines = []
+    for c in cards:
+        qty = c.get("need") or c.get("qty") or 1
+        num = c["collector_number"]
+        denom = denoms.get(c.get("set_id") or "")
+        if denom is None:
+            row = db.query_one(
+                "SELECT set_id FROM cards WHERE id=%s", (c["card_id"],))
+            denom = denoms.get(row["set_id"]) if row else None
+        code = f" ({num}/{denom})" if denom and num.isdigit() else ""
+        lines.append(f"{qty} {c['full_name']}{code}")
+    return "\n".join(lines)
+
+
+class SkipIn(BaseModel):
+    card_id: str
+
+
+@router.post("/wantlist/skips", status_code=201)
+def add_wantlist_skip(body: SkipIn):
+    """Remove one card from the aggregated want list ("bought it / don't want
+    it") without touching any deck's wanted flag. Restorable."""
+    if not db.query_one("SELECT 1 FROM cards WHERE id=%s", (body.card_id,)):
+        raise HTTPException(404, "unknown card")
+    db.execute("""INSERT INTO wantlist_skips (card_id) VALUES (%s)
+                  ON CONFLICT (card_id) DO NOTHING""", (body.card_id,))
+    return {"card_id": body.card_id, "skipped": True}
+
+
+@router.delete("/wantlist/skips/{card_id}", status_code=204)
+def remove_wantlist_skip(card_id: str):
+    if db.execute("DELETE FROM wantlist_skips WHERE card_id=%s", (card_id,)) == 0:
+        raise HTTPException(404, "card not skipped")
+
+
+@router.post("/wantlist/clear")
+def clear_wantlist():
+    """Empty the deck-derived want list by unflagging every wanted deck (the
+    decks themselves are untouched). Skips are kept — they record cards you
+    decided against, independent of which decks are flagged."""
+    n = db.execute("UPDATE decks SET wanted=false, updated_at=now() WHERE wanted")
+    return {"decks_unflagged": n}
+
+
+# --- named want lists --------------------------------------------------------
+
+class WantListIn(BaseModel):
+    name: str
+    deck_id: int | None = None
+
+
+class WantListCardIn(BaseModel):
+    card_id: str = ""
+    card: str = ""                     # name lookup alternative to card_id
+    qty: int = 1                       # 0 removes
+
+
+def _wantlist_items(wl: dict) -> list[dict]:
+    """Manual entries plus, for a deck-linked list, the deck's live shortfall
+    (computed at read time, so the list tracks collection changes)."""
+    items = db.query(
+        """SELECT wc.card_id, wc.qty, c.full_name, s.code AS set_code, c.set_id,
+                  c.collector_number, c.rarity, c.price_usd, 'manual' AS source
+           FROM want_list_cards wc
+           JOIN cards c ON c.id = wc.card_id JOIN sets s ON s.id = c.set_id
+           WHERE wc.list_id = %s""", (wl["id"],))
+    if wl.get("deck_id"):
+        manual_ids = {i["card_id"] for i in items}
+        for r in db.query(
+                """SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.set_id,
+                          c.collector_number, c.rarity, c.price_usd, dc.qty AS qty_wanted,
+                          COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
+                          COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
+                                    JOIN decks d2 ON d2.id = dc2.deck_id
+                                    WHERE dc2.card_id = c.id AND d2.in_use
+                                      AND d2.format = 'constructed'
+                                      AND d2.id <> %s), 0) AS allocated
+                   FROM deck_cards dc
+                   JOIN cards c ON c.id = dc.card_id
+                   JOIN sets s ON s.id = c.set_id
+                   LEFT JOIN collection col ON col.card_id = c.id
+                   WHERE dc.deck_id = %s""", (wl["deck_id"], wl["deck_id"])):
+            need = max(0, r["qty_wanted"] + r["allocated"] - r["owned"])
+            if need and r["card_id"] not in manual_ids:
+                items.append({"card_id": r["card_id"], "qty": need,
+                              "full_name": r["full_name"], "set_code": r["set_code"],
+                              "set_id": r["set_id"],
+                              "collector_number": r["collector_number"],
+                              "rarity": r["rarity"], "price_usd": r["price_usd"],
+                              "source": "deck"})
+    for i in items:
+        p = float(i["price_usd"]) if i["price_usd"] is not None else None
+        i["line_cost"] = round(p * i["qty"], 2) if p is not None else None
+    items.sort(key=lambda i: (-(i["line_cost"] or 0), i["full_name"]))
+    return items
+
+
+@router.get("/wantlists")
+def list_want_lists():
+    lists = db.query(
+        """SELECT wl.id, wl.name, wl.deck_id, d.name AS deck_name, wl.created_at
+           FROM want_lists wl LEFT JOIN decks d ON d.id = wl.deck_id
+           ORDER BY wl.name""")
+    for wl in lists:
+        items = _wantlist_items(wl)
+        wl["cards"] = items
+        wl["total_cost"] = round(sum(i["line_cost"] or 0 for i in items), 2)
+        wl["unpriced"] = sum(1 for i in items if i["line_cost"] is None)
+        wl["text"] = "\n".join(
+            f"{i['qty']} {i['full_name']} [{i['set_code']}/{i['collector_number']}]"
+            for i in items)
+        wl["tcg_text"] = _tcg_text(items)
+    return lists
+
+
+@router.post("/wantlists", status_code=201)
+def create_want_list(body: WantListIn):
+    if body.deck_id is not None and not db.query_one(
+            "SELECT 1 FROM decks WHERE id=%s", (body.deck_id,)):
+        raise HTTPException(404, f"no deck #{body.deck_id}")
+    try:
+        row = db.query_one(
+            "INSERT INTO want_lists (name, deck_id) VALUES (%s,%s) RETURNING id, name",
+            (body.name.strip(), body.deck_id))
+    except Exception:
+        raise HTTPException(409, f"want list {body.name!r} already exists")
+    return row
+
+
+@router.delete("/wantlists/{list_id}", status_code=204)
+def delete_want_list(list_id: int):
+    if db.execute("DELETE FROM want_lists WHERE id=%s", (list_id,)) == 0:
+        raise HTTPException(404, "no such want list")
+
+
+@router.put("/wantlists/{list_id}/cards")
+def set_want_list_card(list_id: int, body: WantListCardIn):
+    """Upsert one card on a named list (qty=0 removes). `card` accepts a name
+    when card_id isn't known — exact full-name/name match, else 422 with
+    candidates."""
+    if not db.query_one("SELECT 1 FROM want_lists WHERE id=%s", (list_id,)):
+        raise HTTPException(404, "no such want list")
+    card_id = body.card_id
+    if not card_id:
+        if not body.card.strip():
+            raise HTTPException(422, "provide card_id or card")
+        hits = db.query(
+            """SELECT c.id, c.full_name, s.code AS set_code, c.collector_number
+               FROM cards c JOIN sets s ON s.id = c.set_id
+               WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
+               ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
+                        s.released_at DESC NULLS LAST""",
+            (body.card.strip(), body.card.strip()))
+        if not hits:
+            raise HTTPException(422, f"no card named {body.card!r}")
+        card_id = hits[0]["id"]
+    if body.qty <= 0:
+        if db.execute("DELETE FROM want_list_cards WHERE list_id=%s AND card_id=%s",
+                      (list_id, card_id)) == 0:
+            raise HTTPException(404, "card not on this list")
+        return {"list_id": list_id, "card_id": card_id, "qty": 0}
+    db.execute(
+        """INSERT INTO want_list_cards (list_id, card_id, qty) VALUES (%s,%s,%s)
+           ON CONFLICT (list_id, card_id) DO UPDATE SET qty = EXCLUDED.qty""",
+        (list_id, card_id, body.qty))
+    return {"list_id": list_id, "card_id": card_id, "qty": body.qty}
 
 
 @router.put("/decks/{deck_id}/in_use")

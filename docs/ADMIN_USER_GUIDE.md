@@ -94,7 +94,7 @@ lorcana/
 │       ├── services/   importer, matching, deck_import, snapshots, brief
 │       └── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, lorcast (client)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–027 idempotent SQL migrations
+├── db/migrations/  000–028 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
 └── docs/           this guide
 ```
@@ -698,7 +698,17 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   The **Want List** page (linked from Decks) aggregates every missing copy
   across flagged decks — on top of what built decks already allocate, so it's
   the true "make everything buildable simultaneously" shopping list — priced
-  per card, biggest ticket first, with a copy-as-text button for the shop.
+  per card, biggest ticket first. Per-row ✕ removes a card ("bought it") with
+  a restore link; **Clear want list** unflags every deck at once. Two copy
+  buttons: plain text, and **Copy for TCGplayer** — Mass Entry lines with the
+  printed card code ("4 Elinor - Renowned Diplomat (86/204)"), which is the
+  identity TCGplayer product names carry, so pasting into
+  tcgplayer.com/massentry matches where bare names fail. Below it, **named
+  want lists** (mig 028) organize wants by purpose ("Want for Rainbow Hunny",
+  "Foils"): create ad-hoc lists, add cards by name (standard printing
+  preferred over Enchanted/Epic reprints), or link a deck so the list tracks
+  its live shortfall automatically. Agents manage the same lists via
+  `lorcana_want_edit`.
 - **Mark built / in use:** allocates the deck's copies. If the missing copies
   are sleeved in **other built decks**, the dialog lists those donor decks and
   offers to **pull** — one click un-builds the donors (their recipes stay
@@ -798,7 +808,8 @@ be dictated conversationally between rounds.
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
 | `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
-| `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list. |
+| `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list + all named lists (`tcg=True` returns TCGplayer Mass Entry card-code lines). |
+| `lorcana_want_edit` | Manage want lists: create_list/delete_list (optionally deck-linked), add/remove cards on named lists, skip/restore cards on the deck list, clear_deck_wants. |
 | `lorcana_sim_run` / `lorcana_sim_runs` / `lorcana_sim_result` | Queue engine simulations (vs baselines or a sim-only opponent deck), list runs, and fetch results incl. the teacher pass (turning points of a typical loss) — coaching raw material. |
 | `lorcana_sim_compare` / `lorcana_sim_coverage` | Compare two runs (Wilson CIs, paired McNemar, comparability gates) / whole-catalog engine coverage. |
 | `lorcana_import_duels_log` | Paste a raw duels.ink game log (either dialect): parses winner/turns/lore/plays/impact + undo markers, auto-detects your seat, infers opponent inks, ranks threats by impact, files a 1-0/0-1 match under the day's duels.ink practice event, stores the full log (quarantined if internally inconsistent). `overwrite` replaces round+log; identical retries no-op; mvp/dead/tags/threat overrides inline. |
@@ -859,7 +870,11 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /matchlog/cut-list?deck_id=` | Never-MVP / dead-mention analysis (`event_type` filter). |
 | `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck; `event_type` filter). |
 | `PUT /decks/{id}/wanted` | Flag/unflag a deck for the want list. |
-| `GET /wantlist` | Aggregated, priced shopping list across wanted decks (+ `text` export). |
+| `GET /wantlist` | Aggregated, priced shopping list across wanted decks; skipped cards listed separately; `text` + `tcg_text` (TCGplayer Mass Entry card codes) exports. |
+| `POST /wantlist/skips`, `DELETE /wantlist/skips/{card_id}` | Remove/restore one card on the aggregated list without unflagging decks. |
+| `POST /wantlist/clear` | Unflag every wanted deck (empties the deck-derived list; skips kept). |
+| `GET/POST /wantlists`, `DELETE /wantlists/{id}` | Named want lists ("Want for Rainbow Hunny"), optionally deck-linked — a linked list auto-includes that deck's live shortfall. |
+| `PUT /wantlists/{id}/cards` | Upsert a card on a named list by id or name (standard printing preferred; qty=0 removes). |
 | `POST/GET /duels/logs`, `GET/DELETE /duels/logs/{id}` | Store / list (`match_id` filter) / read / delete full duels.ink game logs (delete is used by overwrite re-imports). |
 | `GET /duels/coverage-priority` | Cards seen in real games vs engine coverage, ranked by play frequency. |
 | `POST /duels/scout` | Auto-draft a sim-only opponent deck from real games (`inks`, `shape`, `handle`, `save`, `covered_only`). |

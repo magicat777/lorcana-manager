@@ -18,8 +18,10 @@ export default function Decks() {
   const nav = useNavigate()
 
   const [conflicts, setConflicts] = useState<AllocationConflict[]>([])
-  const [sortKey, setSortKey] = useState('')
-  const [sortDir, setSortDir] = useState(1)
+  // Default: newest deck first (ids are a never-reused sequence, so id
+  // order IS creation order). Click any header to re-sort.
+  const [sortKey, setSortKey] = useState('id')
+  const [sortDir, setSortDir] = useState(-1)
 
   const clickSort = (key: string) => {
     if (sortKey === key) setSortDir(-sortDir)

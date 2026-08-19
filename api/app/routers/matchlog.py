@@ -70,6 +70,7 @@ class EventIn(BaseModel):
     deck_version: str = ""
     entry_fee: float | None = None
     notes: str = ""
+    event_type: str = "sanctioned"     # sanctioned | practice | casual
 
 
 class EventPost(BaseModel):
@@ -91,6 +92,10 @@ class EventPost(BaseModel):
     rounds: int | None = None
     player_count: int | None = None
     entry_fee: float | None = None
+    event_type: str | None = None
+
+
+EVENT_TYPES = ("sanctioned", "practice", "casual")
 
 
 def _resolve_card(cur, obs: ObservationIn) -> tuple[str | None, str | None]:
@@ -135,7 +140,7 @@ def _event_row(event_id: int) -> dict:
 @router.get("/events")
 def list_events(limit: int = 50):
     events = db.query(
-        """SELECT e.id, e.date, e.store, e.format, e.rounds, e.player_count,
+        """SELECT e.id, e.date, e.store, e.format, e.event_type, e.rounds, e.player_count,
                   e.final_record, e.packs_won, e.promo, e.deck_version, d.name AS deck_name
            FROM events e LEFT JOIN decks d ON d.id = e.deck_id
            ORDER BY e.date DESC, e.id DESC LIMIT %s""", (min(limit, 200),))
@@ -203,12 +208,15 @@ def create_event(body: EventIn):
         venue_id, store = venue["id"], venue["display_name"]
     if not store:
         raise HTTPException(422, "provide venue_slug or a free-text store name")
+    if body.event_type not in EVENT_TYPES:
+        raise HTTPException(422, f"event_type must be one of {EVENT_TYPES}")
     row = db.query(
         """INSERT INTO events (date, store, venue_id, format, player_count, rounds,
-                               deck_id, deck_version, entry_fee, notes)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                               deck_id, deck_version, entry_fee, notes, event_type)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (body.date, store, venue_id, body.format, body.player_count, body.rounds,
-         body.deck_id, body.deck_version, body.entry_fee, body.notes))
+         body.deck_id, body.deck_version, body.entry_fee, body.notes,
+         body.event_type))
     return _event_row(row[0]["id"])
 
 
@@ -224,13 +232,15 @@ def update_event(event_id: int, body: EventPost):
     if body.deck_id is not None and not db.query_one(
             "SELECT 1 FROM decks WHERE id=%s", (body.deck_id,)):
         raise HTTPException(404, f"no deck #{body.deck_id}")
+    if body.event_type is not None and body.event_type not in EVENT_TYPES:
+        raise HTTPException(422, f"event_type must be one of {EVENT_TYPES}")
     with db.pool.connection() as conn:
         with conn.cursor() as cur:
             sets, params = [], []
             for field in ("final_record", "packs_won", "promo",
                           "biggest_problem", "one_change", "notes",
                           "date", "store", "format", "deck_id", "deck_version",
-                          "rounds", "player_count", "entry_fee"):
+                          "rounds", "player_count", "entry_fee", "event_type"):
                 v = getattr(body, field)
                 if v is not None:
                     sets.append(f"{field}=%s")
@@ -315,9 +325,12 @@ def delete_match(match_id: int):
 
 
 @router.get("/matchlog/ink-pairs")
-def ink_pairs(store: str = "", last_events: int = 0):
+def ink_pairs(store: str = "", last_events: int = 0, event_type: str = ""):
     """Ink-pair frequency across logged matches — what to tune against."""
     where, params = ["m.opp_ink_1 IS NOT NULL"], []
+    if event_type:
+        where.append("e.event_type = %s")
+        params.append(event_type)
     if store:
         where.append("e.store ILIKE %s")
         params.append(f"%{store}%")
@@ -337,14 +350,18 @@ def ink_pairs(store: str = "", last_events: int = 0):
 
 
 @router.get("/matchlog/stats")
-def match_stats(deck_id: int = 0):
+def match_stats(deck_id: int = 0, event_type: str = ""):
     """Aggregate win-rate analytics over the whole match log (optionally one
-    deck): overall record, per-deck, play-vs-draw, game 1 vs games 2/3, loss
+    deck and/or one event_type — filter practice bot games out of real
+    stats): overall record, per-deck, play-vs-draw, game 1 vs games 2/3, loss
     modes, and opponent archetype shapes. Percentages are left to the client."""
     where, params = ["1=1"], []
     if deck_id:
         where.append("e.deck_id = %s")
         params.append(deck_id)
+    if event_type:
+        where.append("e.event_type = %s")
+        params.append(event_type)
     w = " AND ".join(where)
 
     overall = db.query_one(
@@ -407,20 +424,24 @@ def match_stats(deck_id: int = 0):
 
 
 @router.get("/matchlog/cut-list")
-def cut_list(deck_id: int):
+def cut_list(deck_id: int, event_type: str = ""):
     """Deck cards never recorded as my_mvp — the evidence-based cut list.
-    Includes dead-card mention counts and how many logged events the deck has."""
+    Includes dead-card mention counts and how many logged events the deck has.
+    event_type='sanctioned' keeps practice bot games out of the evidence."""
     deck = db.query_one("SELECT id, name FROM decks WHERE id=%s", (deck_id,))
     if not deck:
         raise HTTPException(404, "no such deck")
+    tfilter, tparams = ("", []) if not event_type else (" AND e.event_type = %s", [event_type])
     events_logged = db.query_one(
-        "SELECT count(*) AS n FROM events WHERE deck_id=%s", (deck_id,))["n"]
+        f"SELECT count(*) AS n FROM events e WHERE deck_id=%s{tfilter}",
+        [deck_id] + tparams)["n"]
     obs = db.query(
-        """SELECT o.kind, lower(o.value) AS value FROM observations o
+        f"""SELECT o.kind, lower(o.value) AS value FROM observations o
            LEFT JOIN matches m ON m.id = o.match_id
            JOIN events e ON e.id = coalesce(m.event_id, o.event_id)
-           WHERE e.deck_id = %s AND o.kind IN ('my_mvp','my_dead_card','always_dead','never_drew')""",
-        (deck_id,))
+           WHERE e.deck_id = %s{tfilter}
+             AND o.kind IN ('my_mvp','my_dead_card','always_dead','never_drew')""",
+        [deck_id] + tparams)
     mvp = {o["value"] for o in obs if o["kind"] == "my_mvp"}
     dead_counts: dict[str, int] = {}
     for o in obs:
@@ -451,6 +472,8 @@ class DuelsLogIn(BaseModel):
     winner: int | None = None
     first_player: int | None = None
     turns: int | None = None
+    corpus_excluded: bool = False      # quarantined from the replay corpus
+    exclude_reason: str | None = None
 
 
 @router.post("/duels/logs", status_code=201)
@@ -458,19 +481,33 @@ def add_duels_log(body: DuelsLogIn):
     from psycopg.types.json import Jsonb
     row = db.query_one(
         """INSERT INTO duels_game_logs
-             (match_id, event_id, my_player, winner, first_player, turns, raw_log, parsed)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+             (match_id, event_id, my_player, winner, first_player, turns,
+              raw_log, parsed, corpus_excluded, exclude_reason)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (body.match_id, body.event_id, body.my_player, body.winner,
-         body.first_player, body.turns, body.raw_log, Jsonb(body.parsed)))
+         body.first_player, body.turns, body.raw_log, Jsonb(body.parsed),
+         body.corpus_excluded, body.exclude_reason))
     return {"id": row["id"]}
 
 
 @router.get("/duels/logs")
-def list_duels_logs(limit: int = 100):
+def list_duels_logs(limit: int = 100, match_id: int = 0):
+    where, params = "", []
+    if match_id:
+        where, params = "WHERE match_id = %s", [match_id]
     return db.query(
-        """SELECT id, imported_at, match_id, event_id, my_player, winner,
-                  first_player, turns
-           FROM duels_game_logs ORDER BY id DESC LIMIT %s""", (min(limit, 500),))
+        f"""SELECT id, imported_at, match_id, event_id, my_player, winner,
+                  first_player, turns, corpus_excluded, exclude_reason
+           FROM duels_game_logs {where} ORDER BY id DESC LIMIT %s""",
+        params + [min(limit, 500)])
+
+
+@router.delete("/duels/logs/{log_id}", status_code=204)
+def delete_duels_log(log_id: int):
+    """Used by re-imports (overwrite): the replaced match's old log goes away
+    with it — one log per (event, round) in the corpus."""
+    if db.execute("DELETE FROM duels_game_logs WHERE id=%s", (log_id,)) == 0:
+        raise HTTPException(404, "no such log")
 
 
 @router.get("/duels/logs/{log_id}")
@@ -672,7 +709,8 @@ def scout_opponent_deck(body: ScoutIn):
 # --- replay validation (step 2 interface: engine replays real games) ----------
 
 @router.get("/duels/replay-corpus")
-def replay_corpus(replayable_only: bool = False, limit: int = 200):
+def replay_corpus(replayable_only: bool = False, include_excluded: bool = False,
+                  limit: int = 200):
     """Real-game corpus for the engine's replay validator. Each stored log
     plus a card map (log name -> catalog card + engine coverage) and a
     `replayable` flag (every played name matched AND covered). The engine
@@ -685,7 +723,10 @@ def replay_corpus(replayable_only: bool = False, limit: int = 200):
                       'engine_build', rv.engine_build, 'ok', rv.ok,
                       'validated_at', rv.validated_at))
                    FROM replay_validations rv WHERE rv.log_id = g.id) AS validations
-           FROM duels_game_logs g ORDER BY g.id LIMIT %s""", (min(limit, 1000),))
+           FROM duels_game_logs g
+           {}ORDER BY g.id LIMIT %s""".format(
+               "" if include_excluded else "WHERE NOT g.corpus_excluded "),
+        (min(limit, 1000),))
     names = sorted({n.lower()
                     for lg in logs for seat in ("1", "2")
                     for n in ((lg["parsed"].get("plays") or {}).get(seat) or {})})

@@ -86,6 +86,23 @@ Upserts on `(log_id, engine_build)` — re-running after a fix overwrites the
 verdict. Suggested cadence: a step in the nightly sim CronJob, so every new
 engine build re-validates the whole corpus.
 
+**Improvement plan status (2026-08-19):** items 1–9 of the parser/manager
+plan (`~/Downloads/lorcana-manager-improvement-plan.md`) are implemented:
+import `overwrite` replaces round + stored log atomically (item 1);
+timestamped bookmarklet dialect parses, undo markers kept as per-turn
+`undo_counts` in `parsed` (2); cross-player lore attribution by tracked-total
+match (3); ingest validation quarantines inconsistent logs via
+`corpus_excluded`/`exclude_reason` — replay corpus skips them by default (4);
+threats ranked by impact (banishes ×3, bounces ×3, lore swings, draws —
+verified: game 2 now tops Mother Knows Best, not Tibbs) (5); event reuse is
+date+store, creation-path-independent (the #14 dupe was the UTC-date bug,
+fixed) (6); identical retried imports and log_match calls are no-op
+successes (7); `event_type` practice|sanctioned|casual on events, filters on
+match stats + cut list, duels imports default practice (8); importer takes
+mvp/dead/tags/threat overrides, log_match overwrite documented as full
+REPLACE (9). Game-3 fixtures (corrupt + clean capture) still need a real
+import to exercise 2/4 end-to-end.
+
 **The log is a witness, not an oracle (2026-08-19).** Jason has observed
 duels.ink's own engine dropping lore sequences in some games. The importer
 now audits every log's internal lore bookkeeping (per-player transition

@@ -667,3 +667,100 @@ def scout_opponent_deck(body: ScoutIn):
         conn.commit()
     result.update({"saved": True, "deck_id": deck_id, "deck_name": name})
     return result
+
+
+# --- replay validation (step 2 interface: engine replays real games) ----------
+
+@router.get("/duels/replay-corpus")
+def replay_corpus(replayable_only: bool = False, limit: int = 200):
+    """Real-game corpus for the engine's replay validator. Each stored log
+    plus a card map (log name -> catalog card + engine coverage) and a
+    `replayable` flag (every played name matched AND covered). The engine
+    checks each public action against legal_actions() and the log's lore
+    arithmetic, then POSTs a verdict per game to /duels/replay-validations."""
+    logs = db.query(
+        """SELECT g.id, g.raw_log, g.parsed, g.my_player, g.winner,
+                  g.first_player, g.turns,
+                  (SELECT jsonb_agg(jsonb_build_object(
+                      'engine_build', rv.engine_build, 'ok', rv.ok,
+                      'validated_at', rv.validated_at))
+                   FROM replay_validations rv WHERE rv.log_id = g.id) AS validations
+           FROM duels_game_logs g ORDER BY g.id LIMIT %s""", (min(limit, 1000),))
+    names = sorted({n.lower()
+                    for lg in logs for seat in ("1", "2")
+                    for n in ((lg["parsed"].get("plays") or {}).get(seat) or {})})
+    cards = db.query(
+        """SELECT lower(c.full_name) AS fkey, lower(c.name) AS nkey, c.id, c.full_name,
+                  EXISTS (SELECT 1 FROM engine_coverage ec WHERE ec.card_id = c.id) AS covered
+           FROM cards c JOIN sets s ON s.id = c.set_id
+           WHERE lower(c.full_name) = ANY(%s) OR lower(c.name) = ANY(%s)
+           ORDER BY s.released_at DESC NULLS LAST""", (names, names)) if names else []
+    by_key: dict[str, list] = {}
+    for c in cards:
+        by_key.setdefault(c["fkey"], []).append(c)
+        by_key.setdefault(c["nkey"], []).append(c)
+    out = []
+    for lg in logs:
+        card_map, replayable = {}, True
+        for seat in ("1", "2"):
+            for n in ((lg["parsed"].get("plays") or {}).get(seat) or {}):
+                hits = by_key.get(n.lower())
+                hit = (next((c for c in hits if c["covered"]), None) or hits[0]) if hits else None
+                if hit is None:
+                    card_map[n] = None
+                    replayable = False
+                else:
+                    card_map[n] = {"card_id": hit["id"], "full_name": hit["full_name"],
+                                   "covered": hit["covered"]}
+                    replayable = replayable and hit["covered"]
+        if replayable_only and not replayable:
+            continue
+        out.append({**lg, "card_map": card_map, "replayable": replayable})
+    return {"games": len(out), "corpus": out}
+
+
+class ReplayValidationIn(BaseModel):
+    log_id: int
+    engine_build: str
+    ok: bool
+    actions_checked: int | None = None
+    divergences: list[dict] = []
+
+
+@router.post("/duels/replay-validations", status_code=201)
+def post_replay_validation(body: ReplayValidationIn):
+    from psycopg.types.json import Jsonb
+    if not db.query_one("SELECT 1 FROM duels_game_logs WHERE id=%s", (body.log_id,)):
+        raise HTTPException(404, "no such log")
+    row = db.query_one(
+        """INSERT INTO replay_validations
+             (log_id, engine_build, ok, actions_checked, divergences)
+           VALUES (%s,%s,%s,%s,%s)
+           ON CONFLICT (log_id, engine_build) DO UPDATE
+           SET ok=EXCLUDED.ok, actions_checked=EXCLUDED.actions_checked,
+               divergences=EXCLUDED.divergences, validated_at=now()
+           RETURNING id""",
+        (body.log_id, body.engine_build, body.ok, body.actions_checked,
+         Jsonb(body.divergences)))
+    return {"id": row["id"]}
+
+
+@router.get("/duels/replay-status")
+def replay_status():
+    """Replay-validation health per engine build: how many real games replay
+    clean, and the currently-open divergences (each one is an engine bug or a
+    mis-specced card, found by a real game)."""
+    total = db.query_one("SELECT count(*) AS n FROM duels_game_logs")["n"]
+    builds = db.query(
+        """SELECT engine_build, count(*) AS validated,
+                  count(*) FILTER (WHERE ok) AS ok,
+                  max(validated_at) AS last_run
+           FROM replay_validations GROUP BY engine_build
+           ORDER BY max(validated_at) DESC""")
+    diverged = db.query(
+        """SELECT rv.log_id, rv.engine_build, rv.divergences, g.match_id
+           FROM replay_validations rv
+           JOIN duels_game_logs g ON g.id = rv.log_id
+           WHERE NOT rv.ok
+           ORDER BY rv.validated_at DESC LIMIT 20""")
+    return {"logs_total": total, "builds": builds, "diverged": diverged}

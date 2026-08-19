@@ -387,3 +387,88 @@ def get_coverage():
                   max(updated_at) AS updated_at FROM engine_coverage""")
     total = db.query_one("SELECT count(*) AS n FROM cards")["n"]
     return {**row, "catalog": total}
+
+
+@router.get("/sim/calibration")
+def calibration():
+    """Sim-vs-reality per matchup: my deck × opponent ink pair, real match
+    record (match log, paper + online) beside simulated win rate
+    (sim_deck_runs vs decks of that ink pair), both as Wilson 95% CIs.
+    Non-overlapping intervals = the engine's model of that matchup disagrees
+    with real play — a policy/spec gap worth investigating. Baseline
+    opponents (deck2/deck3) have no ink identity and are excluded."""
+    from .matchlog import LOSS_RESULTS, WIN_RESULTS
+
+    def pair_key(inks) -> str:
+        return "/".join(sorted(i for i in inks if i))
+
+    groups: dict[tuple, dict] = {}
+
+    real = db.query(
+        """SELECT e.deck_id, d.name AS deck_name, m.opp_ink_1, m.opp_ink_2, m.result
+           FROM matches m
+           JOIN events e ON e.id = m.event_id
+           JOIN decks d ON d.id = e.deck_id
+           WHERE m.opp_ink_1 IS NOT NULL AND m.opp_ink_1 != ''""")
+    for r in real:
+        pair = pair_key((r["opp_ink_1"], r["opp_ink_2"]))
+        g = groups.setdefault((r["deck_id"], pair), {
+            "deck_id": r["deck_id"], "deck_name": r["deck_name"], "opp_inks": pair,
+            "real_wins": 0, "real_losses": 0, "sim_wins": 0, "sim_games": 0,
+            "sim_runs": 0})
+        g["deck_name"] = r["deck_name"]
+        if r["result"] in WIN_RESULTS:
+            g["real_wins"] += 1
+        elif r["result"] in LOSS_RESULTS:
+            g["real_losses"] += 1
+
+    runs = db.query(
+        """SELECT r.deck_id, d.name AS deck_name, r.opponent, r.wins, r.losses
+           FROM sim_deck_runs r JOIN decks d ON d.id = r.deck_id
+           WHERE r.status = 'complete' AND r.wins IS NOT NULL""")
+    opp_ids = sorted({int(r["opponent"]) for r in runs if r["opponent"].isdigit()})
+    inks_of: dict[int, str] = {}
+    if opp_ids:
+        for row in db.query(
+                """SELECT dc.deck_id,
+                          array_agg(DISTINCT x.ink ORDER BY x.ink) AS inks
+                   FROM deck_cards dc
+                   JOIN cards c ON c.id = dc.card_id,
+                        LATERAL unnest(COALESCE(c.inks, ARRAY[c.ink])) AS x(ink)
+                   WHERE dc.deck_id = ANY(%s) AND x.ink IS NOT NULL
+                   GROUP BY dc.deck_id""", (opp_ids,)):
+            inks_of[row["deck_id"]] = pair_key(row["inks"])
+    baselines = 0
+    for r in runs:
+        if not r["opponent"].isdigit():
+            baselines += 1
+            continue
+        pair = inks_of.get(int(r["opponent"]), "")
+        if not pair:
+            continue
+        g = groups.setdefault((r["deck_id"], pair), {
+            "deck_id": r["deck_id"], "deck_name": r["deck_name"], "opp_inks": pair,
+            "real_wins": 0, "real_losses": 0, "sim_wins": 0, "sim_games": 0,
+            "sim_runs": 0})
+        g["sim_wins"] += r["wins"]
+        g["sim_games"] += r["wins"] + (r["losses"] or 0)
+        g["sim_runs"] += 1
+
+    rows = []
+    for g in groups.values():
+        rn = g["real_wins"] + g["real_losses"]
+        g["real_ci"] = wilson_ci(g["real_wins"], rn)
+        g["sim_ci"] = wilson_ci(g["sim_wins"], g["sim_games"])
+        if not rn:
+            g["verdict"] = "sim_only"
+        elif not g["sim_games"]:
+            g["verdict"] = "real_only"
+        elif rn < 5:
+            g["verdict"] = "insufficient_real_data"
+        else:
+            lo = max(g["real_ci"][0], g["sim_ci"][0])
+            hi = min(g["real_ci"][1], g["sim_ci"][1])
+            g["verdict"] = "consistent" if lo <= hi else "DIVERGES"
+        rows.append(g)
+    rows.sort(key=lambda g: (g["verdict"] != "DIVERGES", g["deck_name"], g["opp_inks"]))
+    return {"matchups": rows, "baseline_runs_excluded": baselines}

@@ -193,7 +193,7 @@ export default function DeckDetail() {
 
   const remove = async () => {
     if (!deck || !confirm(`Delete deck "${deck.name}"?`)) return
-    await send('DELETE', `/decks/${deck.id}`)
+    await send('DELETE', `/decks/${deck.id}?source=webui`)
     nav('/decks')
   }
 

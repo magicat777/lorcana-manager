@@ -299,9 +299,49 @@ def update_deck(deck_id: int, body: DeckIn):
 
 
 @router.delete("/decks/{deck_id}", status_code=204)
-def delete_deck(deck_id: int):
-    if db.execute("DELETE FROM decks WHERE id=%s", (deck_id,)) == 0:
+def delete_deck(deck_id: int, source: str = "api"):
+    """Hard delete, but never silent: a tombstone records name, metadata and
+    the full card list first (deck_events cascade away with the deck, so this
+    is the only surviving audit — and a recoverable archive)."""
+    from psycopg.types.json import Jsonb
+    deck = db.query_one("SELECT * FROM decks WHERE id=%s", (deck_id,))
+    if not deck:
         raise HTTPException(404, "no such deck")
+    cards = db.query(
+        """SELECT dc.card_id, dc.qty, c.full_name FROM deck_cards dc
+           JOIN cards c ON c.id = dc.card_id WHERE dc.deck_id=%s
+           ORDER BY c.full_name""", (deck_id,))
+    with db.pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO deck_tombstones
+                 (deck_id, name, format, sim_only, strategy, notes, card_total,
+                  cards, created_at, deleted_source)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (deck_id, deck["name"], deck["format"], deck["sim_only"],
+             deck.get("strategy"), deck.get("notes"),
+             sum(c["qty"] for c in cards), Jsonb(cards),
+             deck.get("created_at"), source))
+        cur.execute("DELETE FROM decks WHERE id=%s", (deck_id,))
+        conn.commit()
+
+
+@router.get("/deck-tombstones")
+def list_deck_tombstones(limit: int = 50):
+    """Deleted decks, newest first — explains gaps in the deck id sequence
+    (ids are never reused). `cards` in the detail is the full recipe."""
+    return db.query(
+        """SELECT id, deck_id, name, format, sim_only, strategy, card_total,
+                  deleted_at, deleted_source
+           FROM deck_tombstones ORDER BY deleted_at DESC LIMIT %s""",
+        (min(limit, 200),))
+
+
+@router.get("/deck-tombstones/{tomb_id}")
+def deck_tombstone_detail(tomb_id: int):
+    row = db.query_one("SELECT * FROM deck_tombstones WHERE id=%s", (tomb_id,))
+    if not row:
+        raise HTTPException(404, "no such tombstone")
+    return row
 
 
 class InUseIn(BaseModel):

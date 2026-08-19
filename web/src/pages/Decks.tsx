@@ -18,6 +18,9 @@ export default function Decks() {
   const nav = useNavigate()
 
   const [conflicts, setConflicts] = useState<AllocationConflict[]>([])
+  const [tombstones, setTombstones] = useState<
+    { id: number; deck_id: number; name: string; card_total: number; deleted_at: string; deleted_source: string }[]
+  >([])
   // Default: newest deck first (ids are a never-reused sequence, so id
   // order IS creation order). Click any header to re-sort.
   const [sortKey, setSortKey] = useState('id')
@@ -60,6 +63,7 @@ export default function Decks() {
   useEffect(() => {
     get<Deck[]>('/decks').then(setDecks).catch((e) => setError(String(e)))
     get<AllocationConflict[]>('/allocation-conflicts').then(setConflicts).catch(() => {})
+    get<typeof tombstones>('/deck-tombstones').then(setTombstones).catch(() => {})
   }, [])
 
   const createEmpty = async () => {
@@ -191,6 +195,27 @@ export default function Decks() {
           </tbody>
         </table>
       </div>
+
+      {tombstones.length > 0 && (
+        <details style={{ marginTop: '0.8rem' }}>
+          <summary className="muted" style={{ cursor: 'pointer' }}>
+            {tombstones.length} deleted deck{tombstones.length > 1 ? 's' : ''} (id gaps —
+            ids are never reused)
+          </summary>
+          <table style={{ marginTop: '0.4rem' }}>
+            <tbody>
+              {tombstones.map((t) => (
+                <tr key={t.id}>
+                  <td className="muted">#{t.deck_id}</td>
+                  <td>{t.name}</td>
+                  <td className="muted">{t.card_total} cards</td>
+                  <td className="muted">deleted {new Date(t.deleted_at).toLocaleDateString()} via {t.deleted_source}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       <div className="panel" style={{ marginTop: '1.5rem' }}>
         <h3 style={{ marginTop: 0 }}>New deck</h3>

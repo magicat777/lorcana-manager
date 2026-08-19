@@ -50,9 +50,19 @@ covered}`), `replayable` (every played name matched AND engine-covered), and
 any prior `validations`. With `replayable_only=false` you also get games
 containing unspecced cards — useful once those specs land.
 
-**What to check per game** (public information only — hands and deck order
-are not in the log, so this is action-legality + arithmetic, not seed-exact
-state replay):
+**Scope correction (2026-08-19, from the sim session's review):** this doc
+originally scoped replay to "public information only", and that premise was
+**wrong**. Real duels.ink logs contain both starting hands, the full
+mulligan with drawn cards, every draw, every ink, and all challenges and
+banishes — close to complete game state. Genuine `legal_actions()` replay
+(near state-exact, not arithmetic-only) is therefore achievable. The
+arithmetic-only validator built to the original scoping remains valid as a
+first tier; upgrading to full-state replay is a **deliberate design
+decision for the sim session to take**, not a bug fix. The `raw_log` in the
+corpus carries all of it — our `parsed` summary (plays/quests/lore) is a
+convenience index, not the ceiling.
+
+**What to check per game** (minimum tier, as originally scoped):
 
 1. Each `Player N played/sang X` and quest/challenge action must exist in
    `legal_actions()` for a state consistent with the visible board

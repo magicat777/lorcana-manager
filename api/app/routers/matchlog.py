@@ -527,3 +527,143 @@ def duels_coverage_priority():
         bucket.sort(key=lambda x: (-x["plays"], x["name"]))
     return {"games": len(logs), "names_seen": len(plays),
             "covered": covered, "unspecced": unspecced, "unmatched": unmatched}
+
+
+class ScoutIn(BaseModel):
+    inks: str                          # opponent ink pair, e.g. "Amber/Ruby" (or one ink)
+    shape: str = ""                    # optional filter: lore_rush|aggro|midrange|control
+    handle: str = ""                   # optional filter: specific opponent
+    name: str = ""                     # deck name; default "RECON duels <inks> (AUTO)"
+    save: bool = True
+    covered_only: bool = True          # keep the deck simulatable-by-construction
+
+
+@router.post("/duels/scout")
+def scout_opponent_deck(body: ScoutIn):
+    """Auto-draft a sim-only opponent skeleton from REAL duels.ink games:
+    aggregate every card the opponent played across stored logs (filtered by
+    ink pair / shape / handle), estimate copy counts (max plays seen in one
+    game, capped at 4), and top up to 60 with observed-frequency bumps then
+    deterministic covered filler. Re-running with the same name re-scouts in
+    place, so sim history stays attached to the deck id."""
+    want = {i.strip().capitalize() for i in body.inks.replace(",", "/").split("/") if i.strip()}
+    if not want or not want <= {"Amber", "Amethyst", "Emerald", "Ruby", "Sapphire", "Steel"}:
+        raise HTTPException(422, "inks must be 1-2 of Amber/Amethyst/Emerald/Ruby/Sapphire/Steel")
+
+    logs = db.query(
+        """SELECT g.id, g.parsed, g.my_player, m.opp_ink_1, m.opp_ink_2,
+                  m.opp_shape, m.opponent_handle
+           FROM duels_game_logs g JOIN matches m ON m.id = g.match_id
+           WHERE g.my_player IS NOT NULL""")
+    used = []
+    for lg in logs:
+        pair = {i for i in (lg["opp_ink_1"], lg["opp_ink_2"]) if i}
+        if pair != want:
+            continue
+        if body.shape and (lg["opp_shape"] or "") != body.shape:
+            continue
+        if body.handle and (lg["opponent_handle"] or "").lower() != body.handle.lower():
+            continue
+        used.append(lg)
+    if not used:
+        raise HTTPException(404, f"no stored duels.ink games vs {'/'.join(sorted(want))}"
+                                 + (f" shape={body.shape}" if body.shape else "")
+                                 + (f" handle={body.handle}" if body.handle else ""))
+
+    # Copy estimate: max simultaneous plays of a card in ONE game = at least
+    # that many copies (recursion inflates this, hence the cap at 4).
+    est: dict[str, dict] = {}
+    for lg in used:
+        opp = str(3 - lg["my_player"])
+        for cname, n in ((lg["parsed"].get("plays") or {}).get(opp) or {}).items():
+            e = est.setdefault(cname.lower(), {"name": cname, "qty": 0, "plays": 0, "games": 0})
+            e["qty"] = min(4, max(e["qty"], int(n)))
+            e["plays"] += int(n)
+            e["games"] += 1
+
+    keys = list(est)
+    cands = db.query(
+        """SELECT lower(c.full_name) AS fkey, lower(c.name) AS nkey, c.id, c.full_name,
+                  EXISTS (SELECT 1 FROM engine_coverage ec WHERE ec.card_id = c.id) AS covered
+           FROM cards c JOIN sets s ON s.id = c.set_id
+           WHERE lower(c.full_name) = ANY(%s) OR lower(c.name) = ANY(%s)
+           ORDER BY s.released_at DESC NULLS LAST""", (keys, keys)) if keys else []
+    by_key: dict[str, list] = {}
+    for c in cands:
+        by_key.setdefault(c["fkey"], []).append(c)
+        by_key.setdefault(c["nkey"], []).append(c)
+
+    observed, excluded, unmatched = [], [], []
+    for key, e in sorted(est.items(), key=lambda kv: (-kv[1]["plays"], kv[0])):
+        hits = by_key.get(key)
+        if not hits:
+            unmatched.append(e["name"])
+            continue
+        hit = next((c for c in hits if c["covered"]), None)
+        if hit is None:
+            if body.covered_only:
+                excluded.append(hits[0]["full_name"])
+                continue
+            hit = hits[0]
+        observed.append({"card_id": hit["id"], "full_name": hit["full_name"],
+                         "qty": e["qty"], "plays": e["plays"], "games": e["games"],
+                         "covered": hit["covered"]})
+
+    total = sum(c["qty"] for c in observed)
+    bumped = 0
+    for c in observed:                      # frequency order preserved from sort above
+        while c["qty"] < 4 and total < 60:
+            c["qty"] += 1
+            bumped += 1
+            total += 1
+    filler = []
+    if total < 60:
+        pool = db.query(
+            """SELECT c.id, c.full_name FROM cards c
+               JOIN engine_coverage ec ON ec.card_id = c.id
+               JOIN sets s ON s.id = c.set_id
+               WHERE s.core_legal AND c.inkwell
+                 AND 'Character' = ANY(c.type)
+                 AND COALESCE(c.inks, ARRAY[c.ink]) <@ %s::text[]
+                 AND c.id != ALL(%s)
+               ORDER BY c.cost NULLS LAST, c.id LIMIT 30""",
+            (sorted(want), [c["card_id"] for c in observed] or [""]))
+        for c in pool:
+            if total >= 60:
+                break
+            q = min(4, 60 - total)
+            filler.append({"card_id": c["id"], "full_name": c["full_name"], "qty": q})
+            total += q
+
+    result = {"inks": "/".join(sorted(want)), "games_used": len(used),
+              "observed": observed, "bumped_copies": bumped, "filler": filler,
+              "excluded_unspecced": excluded, "unmatched": unmatched,
+              "card_total": total, "saved": False}
+    if not body.save:
+        return result
+
+    if total < 60:
+        raise HTTPException(422, f"only {total} covered copies available — not enough "
+                                 "for a 60-card skeleton (spec more cards, or save=false to preview)")
+    name = body.name or f"RECON duels {'/'.join(sorted(want))} (AUTO)"
+    notes = (f"Auto-scouted from {len(used)} duels.ink game(s)"
+             + (f" vs {body.handle}" if body.handle else "")
+             + f"; {sum(c['qty'] for c in observed)}/60 observed"
+             + (f", {len(excluded)} unspecced excluded" if excluded else ""))
+    with db.pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO decks (name, notes, created_source, format, sim_only)
+               VALUES (%s,%s,'scout','constructed',true)
+               ON CONFLICT (name) DO UPDATE
+               SET notes=EXCLUDED.notes, updated_at=now(), updated_source='scout'
+               RETURNING id""", (name, notes))
+        deck_id = cur.fetchone()["id"]
+        cur.execute("DELETE FROM deck_cards WHERE deck_id=%s", (deck_id,))
+        for c in observed + filler:
+            cur.execute("INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (%s,%s,%s)",
+                        (deck_id, c["card_id"], c["qty"]))
+        cur.execute("INSERT INTO deck_events (deck_id, action, detail) VALUES (%s,'scouted',%s)",
+                    (deck_id, notes))
+        conn.commit()
+    result.update({"saved": True, "deck_id": deck_id, "deck_name": name})
+    return result

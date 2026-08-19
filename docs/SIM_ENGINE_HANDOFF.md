@@ -14,12 +14,16 @@ decklists via `lorcana_scout_deck` replace those guesses outright as the
 duels.ink corpus grows (deck notes state the observed/60 fraction, so you
 can see the guesswork shrink).
 
-The sim session's item #9 (meta-weighted gauntlet) is blocked on missing
-opponent inks in the match log. Verified on this side: exactly **6 rounds**
-lack `opp_ink_1` — Gamelandia sealed league, event #6 (2026-08-10, R1–R3:
-Brandon/Allan/Kevin) and event #9 (2026-08-17, R1–R3: Harry/Allan/Ben).
-Only Jason can supply those from memory: edit the rounds on the event pages,
-or `lorcana_log_match(event_id=…, round=…, inks=…, overwrite=True)`.
+The sim session's item #9 (meta-weighted gauntlet) flagged missing opponent
+inks in the match log. **Resolved 2026-08-18 — not a data gap.** The 6
+inkless rounds are all Gamelandia *sealed league* (event #6 2026-08-10,
+event #9 2026-08-17), and per Jason the opponents are on mixed/varied piles
+with no consistent ink dominance yet — there is no ink pair to backfill.
+Both events now carry a note saying so. Implication for #9: build the
+meta-weighted gauntlet from **constructed** rounds only (all of which have
+inks); sealed-league rounds carry no constructed-meta signal and NULL inks
+there are expected, not missing. If the league's decks focus as pools grow,
+future rounds will get inks logged normally.
 
 Sim-session status for reference: reporting batch (#3/#4/#5/#10),
 turning-point confidence floor (#7), recurrence analysis (#8) deployed;

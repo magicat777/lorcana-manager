@@ -3,7 +3,7 @@
 Disney Lorcana TCG card database, collection manager, deck builder, and tournament
 match log, running on the ODIN k3s cluster with Claude integration via odin-mcp.
 
-*Last updated 2026-08-18. Source of truth is always the repo at
+*Last updated 2026-08-19. Source of truth is always the repo at
 `~/Projects/ODIN/lorcana` (this app) and `~/Projects/ODIN/odin-mcp` (Claude tools).*
 
 ---
@@ -94,7 +94,7 @@ lorcana/
 │       ├── services/   importer, matching, deck_import, snapshots, brief
 │       └── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, lorcast (client)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–026 idempotent SQL migrations
+├── db/migrations/  000–027 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
 └── docs/           this guide
 ```
@@ -500,7 +500,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); `wanted` want-list flag (mig 013); `sim_only` opponent decks (mig 016); `strategy` archetype label (mig 022); provenance `created_source`/`updated_source` ∈ api/webui/mcp/scout (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
 | `deck_events` | Deck lifecycle audit (mig 015): created/cloned/built/unbuilt/pool/scouted with reasons — answers "where did my copies go". |
 | `deck_pool` | Sealed decks only (mig 011): the cards opened from packs, grows weekly in a league. Sealed decks validate/build against their pool, never the collection, and are excluded from `in_use` allocation. |
-| `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
+| `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, **`event_type`** ∈ sanctioned/practice/casual (mig 027 — keeps practice bot games out of filtered stats), post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','1-0','0-1','DRAW','BYE' — single-game results for duels.ink, mig 024), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
@@ -509,7 +509,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `collection_snapshots` | Daily + per-import collection state (migs 019/020): totals, value, rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts. |
 | `sim_results` / `sim_deck_runs` | Sim engine (migs 012/013/017/021, Lorcana-Sim repo): nightly matchup aggregates / per-deck runs with status, win rates, analysis JSONB. |
 | `engine_coverage` | Which printings the sim engine plays faithfully (mig 018); published by the engine's export tool. |
-| `duels_game_logs` | Full duels.ink game logs (mig 025): raw text + parsed plays/quests/lore per seat. FKs SET NULL — deleting events/matches never destroys game data. Feeds coverage priority, scouting, replay validation. |
+| `duels_game_logs` | Full duels.ink game logs (mig 025): raw text + parsed plays/quests/lore/impact/undo_counts per seat, plus **quarantine** (`corpus_excluded`/`exclude_reason`, mig 027) — logs whose own lore bookkeeping is inconsistent (duels.ink tracking bugs) stay stored but are skipped by the replay corpus. FKs SET NULL — deleting events/matches never destroys game data. |
 | `replay_validations` | Engine replay verdicts per game per build (mig 026): ok/divergences — real games as regression tests. |
 
 Allocation ("free copies") is **not** a view — it's inline SQL in
@@ -753,9 +753,17 @@ losses), and the daily brief's deck watch.
 **duels.ink (online play):** the venue registry includes `duels-ink`
 ("duels.ink (online)"), and pasting a duels.ink game log to any
 MCP-connected Claude (`lorcana_import_duels_log`) files the match here as a
-1-0/0-1 round with auto-detected seat, inferred opponent inks, threat cards,
-and the full turn log stored in `duels_game_logs` for the sim-engine
-pipeline (§10).
+1-0/0-1 round with auto-detected seat, inferred opponent inks,
+**impact-ranked** threat cards (banishes ×3, bounces ×3, lore swings,
+draws — songs and items included), and the full turn log stored in
+`duels_game_logs` for the sim-engine pipeline (§10). Both log dialects
+parse — the copy-paste export and the timestamped bookmarklet capture
+(timestamp-only lines become per-turn `undo_counts`). Events created by
+imports are `event_type=practice`; the importer audits the log's own lore
+bookkeeping and quarantines internally-inconsistent logs from the replay
+corpus (duels.ink's tracker has been seen dropping sequences). Re-imports
+are safe: identical retries no-op, `overwrite=True` replaces the round and
+its stored log together. Default dates resolve in PT, not UTC.
 
 **Match Stats** ("Win-rate analytics →" from the Match Log): overall record
 and win rate, on-play vs on-draw, game 1 vs games 2–3, how games are lost
@@ -793,7 +801,7 @@ be dictated conversationally between rounds.
 | `lorcana_deck_wanted` / `lorcana_want_list` | Flag decks to build; get the aggregated, priced shopping list. |
 | `lorcana_sim_run` / `lorcana_sim_runs` / `lorcana_sim_result` | Queue engine simulations (vs baselines or a sim-only opponent deck), list runs, and fetch results incl. the teacher pass (turning points of a typical loss) — coaching raw material. |
 | `lorcana_sim_compare` / `lorcana_sim_coverage` | Compare two runs (Wilson CIs, paired McNemar, comparability gates) / whole-catalog engine coverage. |
-| `lorcana_import_duels_log` | Paste a raw duels.ink game log: parses winner/turns/lore/plays, auto-detects your seat by decklist overlap, infers opponent inks from the catalog, files a 1-0/0-1 match under the day's duels.ink event, and stores the full log. |
+| `lorcana_import_duels_log` | Paste a raw duels.ink game log (either dialect): parses winner/turns/lore/plays/impact + undo markers, auto-detects your seat, infers opponent inks, ranks threats by impact, files a 1-0/0-1 match under the day's duels.ink practice event, stores the full log (quarantined if internally inconsistent). `overwrite` replaces round+log; identical retries no-op; mvp/dead/tags/threat overrides inline. |
 | `lorcana_coverage_priority` | Engine-authoring priority from REAL play: unspecced cards ranked by how often they hit the table in stored logs. |
 | `lorcana_scout_deck` | Auto-draft a sim-only opponent deck from real games vs an ink pair (copy counts from max plays seen, engine-covered filler to 60); re-scouting updates in place. |
 | `lorcana_sim_calibration` | Sim win rate vs real record per matchup, Wilson CIs both sides; DIVERGES when intervals don't overlap. |
@@ -803,10 +811,10 @@ be dictated conversationally between rounds.
 | `lorcana_delete_deck` | Permanent delete (confirm with the user first). |
 | `lorcana_venues` | Venue registry with slugs, nights, times. |
 | `lorcana_log_event` | Start an event (fuzzy venue + deck-name resolution → returns event id). |
-| `lorcana_log_match` | Log a round from shorthand — games parse from text like `"G1 play W; G2 draw L race"`; inks, shape, tags, threats, dead/MVP cards. |
+| `lorcana_log_match` | Log a round from shorthand — games parse from text like `"G1 play W; G2 draw L race"`; inks, shape, tags, threats, dead/MVP cards. `overwrite=True` is a **full REPLACE** of the round; identical retries return success without writing. |
 | `lorcana_events` / `lorcana_event` | Recent events / full pre-pairings review of one event. |
-| `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events). |
-| `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. |
+| `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
+| `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand. |
 
 ---
@@ -847,15 +855,15 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `POST /events/{id}/matches` | Log a round (unique per round; `overwrite` replaces). |
 | `DELETE /matches/{id}` | Delete a round. |
 | `GET/POST /venues`, `PUT /venues/{slug}` | Venue registry (nearest-first; retire with `active=false`). |
-| `GET /matchlog/ink-pairs` | Meta stats (`store`, `last_events`). |
-| `GET /matchlog/cut-list?deck_id=` | Never-MVP / dead-mention analysis. |
-| `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck). |
+| `GET /matchlog/ink-pairs` | Meta stats (`store`, `last_events`, `event_type`). |
+| `GET /matchlog/cut-list?deck_id=` | Never-MVP / dead-mention analysis (`event_type` filter). |
+| `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck; `event_type` filter). |
 | `PUT /decks/{id}/wanted` | Flag/unflag a deck for the want list. |
 | `GET /wantlist` | Aggregated, priced shopping list across wanted decks (+ `text` export). |
-| `POST/GET /duels/logs`, `GET /duels/logs/{id}` | Store / list / read full duels.ink game logs. |
+| `POST/GET /duels/logs`, `GET/DELETE /duels/logs/{id}` | Store / list (`match_id` filter) / read / delete full duels.ink game logs (delete is used by overwrite re-imports). |
 | `GET /duels/coverage-priority` | Cards seen in real games vs engine coverage, ranked by play frequency. |
 | `POST /duels/scout` | Auto-draft a sim-only opponent deck from real games (`inks`, `shape`, `handle`, `save`, `covered_only`). |
-| `GET /duels/replay-corpus` | Real-game corpus for the engine's replay validator (card_map + replayable flag). |
+| `GET /duels/replay-corpus` | Real-game corpus for the engine's replay validator (card_map + replayable flag; quarantined logs excluded unless `include_excluded`). |
 | `POST /duels/replay-validations`, `GET /duels/replay-status` | Engine posts per-game verdicts / per-build health + divergences. |
 | `GET /sim/calibration` | Sim vs real win rates per matchup, Wilson CIs, divergence verdicts. |
 | `/sim/*` (runs, results, compare, coverage) | Sim-engine pipeline endpoints — see `api/app/routers/sim.py` and the Lorcana-Sim repo. |

@@ -605,6 +605,13 @@ panel (which decks use it, `◈ built` markers, allocated vs free copy counts),
 and an **In collection** panel with −/+ steppers for normal and foil counts —
 this is the manual way to adjust quantities without a re-import.
 
+Below it, a **Want it** panel adds the card straight to a named want list: a
+dropdown of existing lists plus **➕ New list…** to create one inline; each
+Add stacks another copy (current qty is read first, so repeat clicks go
+1x → 2x → 3x). Named lists are managed on the Want List page (§9.5); the
+deck-derived aggregate list is computed from wanted-deck shortfalls and is
+not directly addable here.
+
 ### 9.3 Stats (`/stats`)
 
 Collection totals (unique owned / catalog size, normal + foil copies,

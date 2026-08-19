@@ -86,6 +86,18 @@ Upserts on `(log_id, engine_build)` — re-running after a fix overwrites the
 verdict. Suggested cadence: a step in the nightly sim CronJob, so every new
 engine build re-validates the whole corpus.
 
+**The log is a witness, not an oracle (2026-08-19).** Jason has observed
+duels.ink's own engine dropping lore sequences in some games. The importer
+now audits every log's internal lore bookkeeping (per-player transition
+chains, with unattributed ability lines accepted as explanations, DFS with
+backtracking for shared from-values) and stores unexplained jumps in
+`parsed.anomalies`. Validator rule: a game with non-empty `anomalies` must
+NOT count a lore divergence against the engine — use a divergence kind like
+`log_inconsistent` instead of `lore_mismatch`, or skip the game. Action
+legality checking is unaffected (plays/challenges aren't the buggy part).
+The Amber/Emerald log on file audits clean; the affected game Jason saw
+was never imported.
+
 ## Reporting (already live)
 
 - `GET /api/duels/replay-status` — per-build clean/diverged counts + open

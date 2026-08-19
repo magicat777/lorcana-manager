@@ -93,7 +93,10 @@ def _deck_row(deck_id: int) -> dict:
                             JOIN decks d2 ON d2.id = dc2.deck_id
                             WHERE dc2.card_id = dc.card_id AND d2.in_use
                               AND d2.format = 'constructed'
-                              AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere
+                              AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere,
+                  COALESCE((SELECT count(*) FROM graded_copies g
+                            WHERE g.card_id = dc.card_id
+                              AND g.status IN ('submitted','graded')), 0) AS slabbed
            FROM deck_cards dc
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
@@ -104,7 +107,8 @@ def _deck_row(deck_id: int) -> dict:
         (deck_id,),
     )
     for c in deck["cards"]:
-        c["free"] = max(0, c["owned"] - c["allocated_elsewhere"])
+        # Slabbed/submitted copies are out of the player pool entirely.
+        c["free"] = max(0, c["owned"] - c["allocated_elsewhere"] - c["slabbed"])
     if deck["format"] == "sealed":
         deck["pool"] = db.query(
             """SELECT dp.card_id, dp.qty, c.full_name, c.ink, c.inks, c.cost,
@@ -661,7 +665,10 @@ def wantlist():
                   c.collector_number, c.rarity, c.price_usd,
                   sum(dc.qty) AS qty_wanted,
                   array_agg(DISTINCT d.name ORDER BY d.name) AS decks,
-                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
+                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
+                    - COALESCE((SELECT count(*) FROM graded_copies g
+                                WHERE g.card_id = c.id
+                                  AND g.status IN ('submitted','graded')), 0) AS owned,
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                             JOIN decks d2 ON d2.id = dc2.deck_id
                             WHERE dc2.card_id = c.id AND d2.in_use
@@ -794,7 +801,10 @@ def _wantlist_items(wl: dict) -> list[dict]:
         for r in db.query(
                 """SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.set_id,
                           c.collector_number, c.rarity, c.price_usd, dc.qty AS qty_wanted,
-                          COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
+                          COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
+                            - COALESCE((SELECT count(*) FROM graded_copies g
+                                        WHERE g.card_id = c.id
+                                          AND g.status IN ('submitted','graded')), 0) AS owned,
                           COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                                     JOIN decks d2 ON d2.id = dc2.deck_id
                                     WHERE dc2.card_id = c.id AND d2.in_use

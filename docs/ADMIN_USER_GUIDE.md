@@ -94,7 +94,7 @@ lorcana/
 │       ├── services/   importer, matching, deck_import, snapshots, brief
 │       └── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, lorcast (client)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–029 idempotent SQL migrations
+├── db/migrations/  000–030 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
 └── docs/           this guide
 ```
@@ -500,6 +500,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `decks` / `deck_cards` | `decks.name` unique; `in_use` (mig 008) drives copy allocation; `format` ∈ constructed/sealed (mig 011); `wanted` want-list flag (mig 013); `sim_only` opponent decks (mig 016); `strategy` archetype label (mig 022); provenance `created_source`/`updated_source` ∈ api/webui/mcp/scout (mig 004). `deck_cards.qty > 0`; the 4-copy rule is a UI/export warning, not a DB constraint. |
 | `deck_events` | Deck lifecycle audit (mig 015): created/cloned/built/unbuilt/pool/scouted with reasons — answers "where did my copies go". Cascade-deletes with the deck — deletions survive in `deck_tombstones` instead. |
 | `deck_tombstones` | One row per deleted deck (mig 029): name, metadata, and the FULL card list (jsonb) — a recoverable archive; the Decks page lists them under "deleted decks". |
+| `graded_copies` | Collector grading lifecycle (mig 030): one row per PHYSICAL copy — status raw→submitted→graded, grader/cert/grade, declared value. Submitted/graded copies are excluded from every deck-building availability computation (free counts, buildable, want lists). |
 | `deck_pool` | Sealed decks only (mig 011): the cards opened from packs, grows weekly in a league. Sealed decks validate/build against their pool, never the collection, and are excluded from `in_use` allocation. |
 | `events` | One tournament night: date, venue (`venue_id` FK preferred; `store` text fallback), deck + version, rounds/players/entry, **`event_type`** ∈ sanctioned/practice/casual (mig 027 — keeps practice bot games out of filtered stats), post-event fields (`final_record`, `packs_won`, `promo`, `biggest_problem`, `one_change`). |
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','1-0','0-1','DRAW','BYE' — single-game results for duels.ink, mig 024), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
@@ -829,6 +830,7 @@ be dictated conversationally between rounds.
 | `lorcana_deck_in_use` | Mark built/not-built; 409 shortfall flow with `force` after user confirmation. |
 | `lorcana_delete_deck` | Delete (confirm with the user first) — tombstoned with the full card list. |
 | `lorcana_restore_deck` | Undo a delete: resurrect from the tombstone by the ORIGINAL deck id (new id assigned; refuses double-restores). |
+| `lorcana_graded` / `lorcana_grade_card` | Collector grading portfolio / track a copy through raw→submitted→graded (grader, cert, grade, declared value; capped at owned count; remove returns it to the player pool). |
 | `lorcana_venues` | Venue registry with slugs, nights, times. |
 | `lorcana_log_event` | Start an event (fuzzy venue + deck-name resolution → returns event id). |
 | `lorcana_log_match` | Log a round from shorthand — games parse from text like `"G1 play W; G2 draw L race"`; inks, shape, tags, threats, dead/MVP cards. `overwrite=True` is a **full REPLACE** of the round; identical retries return success without writing. |
@@ -863,6 +865,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET/POST /decks`, `GET/PUT/DELETE /decks/{id}` | Deck CRUD (name unique; PUT replaces the whole card list). DELETE writes a tombstone first (`?source=webui\|mcp\|api`). |
 | `GET /deck-tombstones`, `GET /deck-tombstones/{id}` | Deleted decks (mig 029) with full recipes — explains deck-id gaps (ids are never reused); detail carries the recoverable card list. |
 | `POST /deck-tombstones/{id}/restore` | Resurrect a deleted deck as a NEW deck from the tombstone recipe (optional `name` when the original is taken; missing catalog cards skipped + reported; tombstone gains `restored_deck_id`). |
+| `GET/POST /graded`, `PUT/DELETE /graded/{id}` | Grading pipeline: list portfolio (declared totals, market compare), track a copy (capped at owned count per finish), advance lifecycle (auto-stamps submit/grade dates), remove. Card detail shows a Collector grading panel; `qty_free`/deck `free` exclude submitted+graded copies. |
 | `POST /decks/import` | Text list import: `overwrite`, `strict` (422 with warnings), idempotent (`unchanged`). |
 | `GET /decks/{id}/buildable` | Free-copy check with per-card shortfalls (sealed decks: pool check instead). |
 | `POST /decks/{id}/pool/import` | Add/replace a sealed deck's pool from a text list. |

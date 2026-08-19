@@ -13,6 +13,8 @@ CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_le
   COALESCE((SELECT sum(dc.qty) FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
             WHERE dc.card_id = c.id AND d.in_use
               AND d.format = 'constructed'), 0) AS qty_in_use,
+  COALESCE((SELECT count(*) FROM graded_copies g WHERE g.card_id = c.id
+            AND g.status IN ('submitted','graded')), 0) AS qty_slabbed,
   (ec.card_id IS NOT NULL) AS sim_playable"""
 
 CARD_FROM = """FROM cards c
@@ -103,10 +105,141 @@ def card_detail(set_code: str, number: str):
            WHERE dc.card_id = %s ORDER BY d.in_use DESC, d.name""",
         (row["id"],),
     )
-    row["qty_free"] = max(0, row["qty_normal"] + row["qty_foil"] - row["qty_in_use"])
+    # Slabbed/submitted copies are collector assets, not player assets —
+    # they never count toward deck-building availability.
+    row["qty_free"] = max(0, row["qty_normal"] + row["qty_foil"]
+                          - row["qty_in_use"] - row["qty_slabbed"])
+    row["graded"] = db.query(
+        """SELECT id, foil, status, grader, cert_id, grade, declared_value,
+                  submitted_at, graded_at, notes
+           FROM graded_copies WHERE card_id = %s ORDER BY id""", (row["id"],))
     row["price_history"] = db.query(
         """SELECT captured_at, usd, usd_foil FROM price_history
            WHERE card_id = %s ORDER BY captured_at""",
         (row["id"],),
     )
     return row
+
+
+# --- collector grading lifecycle ---------------------------------------------
+
+from pydantic import BaseModel  # noqa: E402
+
+GRADE_STATUSES = ("raw", "submitted", "graded")
+
+
+class GradedIn(BaseModel):
+    card_id: str = ""
+    card: str = ""                     # name lookup alternative
+    foil: bool = False
+    status: str = "raw"
+    grader: str = ""
+    cert_id: str = ""
+    grade: str = ""
+    declared_value: float | None = None
+    notes: str = ""
+
+
+class GradedUpdate(BaseModel):
+    status: str | None = None
+    grader: str | None = None
+    cert_id: str | None = None
+    grade: str | None = None
+    declared_value: float | None = None
+    notes: str | None = None
+
+
+@router.get("/graded")
+def list_graded():
+    """The grading portfolio: every tracked copy with lifecycle status, cert,
+    grade, and declared vs current market value."""
+    rows = db.query(
+        """SELECT g.*, c.full_name, s.code AS set_code, c.collector_number,
+                  c.rarity, c.price_usd, c.price_usd_foil
+           FROM graded_copies g
+           JOIN cards c ON c.id = g.card_id JOIN sets s ON s.id = c.set_id
+           ORDER BY g.status DESC, g.id""")
+    for r in rows:
+        market = r["price_usd_foil"] if r["foil"] else r["price_usd"]
+        r["market_value"] = float(market) if market is not None else None
+    return {
+        "copies": rows,
+        "by_status": {s: sum(1 for r in rows if r["status"] == s) for s in GRADE_STATUSES},
+        "declared_total": round(sum(float(r["declared_value"] or 0) for r in rows), 2),
+    }
+
+
+@router.post("/graded", status_code=201)
+def add_graded(body: GradedIn):
+    if body.status not in GRADE_STATUSES:
+        raise HTTPException(422, f"status must be one of {GRADE_STATUSES}")
+    card_id = body.card_id
+    if not card_id:
+        if not body.card.strip():
+            raise HTTPException(422, "provide card_id or card")
+        hit = db.query_one(
+            """SELECT c.id FROM cards c JOIN sets s ON s.id = c.set_id
+               WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
+               ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
+                        s.released_at DESC NULLS LAST LIMIT 1""",
+            (body.card.strip(), body.card.strip()))
+        if not hit:
+            raise HTTPException(422, f"no card named {body.card!r}")
+        card_id = hit["id"]
+    owned = db.query_one(
+        "SELECT COALESCE(qty_normal,0) AS n, COALESCE(qty_foil,0) AS f "
+        "FROM collection WHERE card_id=%s", (card_id,)) or {"n": 0, "f": 0}
+    have = owned["f"] if body.foil else owned["n"]
+    tracked = db.query_one(
+        "SELECT count(*) AS n FROM graded_copies WHERE card_id=%s AND foil=%s",
+        (card_id, body.foil))["n"]
+    if tracked + 1 > have:
+        finish = "foil" if body.foil else "normal"
+        raise HTTPException(
+            422, f"collection has {have} {finish} cop{'y' if have == 1 else 'ies'} of this "
+                 f"card and {tracked} already tracked for grading — scan/adjust the "
+                 "collection count first")
+    row = db.query_one(
+        """INSERT INTO graded_copies
+             (card_id, foil, status, grader, cert_id, grade, declared_value,
+              submitted_at, graded_at, notes)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,
+                   CASE WHEN %s IN ('submitted','graded') THEN CURRENT_DATE END,
+                   CASE WHEN %s = 'graded' THEN CURRENT_DATE END, %s)
+           RETURNING id""",
+        (card_id, body.foil, body.status, body.grader or None, body.cert_id or None,
+         body.grade or None, body.declared_value, body.status, body.status,
+         body.notes or None))
+    return {"id": row["id"], "card_id": card_id, "status": body.status}
+
+
+@router.put("/graded/{copy_id}")
+def update_graded(copy_id: int, body: GradedUpdate):
+    """Advance the lifecycle (raw -> submitted -> graded) or fill in cert/
+    grade/value. Timestamps stamp automatically on status transitions."""
+    if body.status is not None and body.status not in GRADE_STATUSES:
+        raise HTTPException(422, f"status must be one of {GRADE_STATUSES}")
+    sets, params = ["updated_at=now()"], []
+    for field in ("status", "grader", "cert_id", "grade", "declared_value", "notes"):
+        v = getattr(body, field)
+        if v is not None:
+            sets.append(f"{field}=%s")
+            params.append(v if v != "" else None)
+    if body.status == "submitted":
+        sets.append("submitted_at=COALESCE(submitted_at, CURRENT_DATE)")
+    if body.status == "graded":
+        sets.append("graded_at=COALESCE(graded_at, CURRENT_DATE)")
+    row = db.query_one(
+        f"UPDATE graded_copies SET {', '.join(sets)} WHERE id=%s RETURNING *",
+        params + [copy_id])
+    if not row:
+        raise HTTPException(404, "no such graded copy")
+    return row
+
+
+@router.delete("/graded/{copy_id}", status_code=204)
+def delete_graded(copy_id: int):
+    """Remove a copy from the grading pipeline (cracked the slab, sold it, or
+    tracked by mistake) — it returns to deck-building availability."""
+    if db.execute("DELETE FROM graded_copies WHERE id=%s", (copy_id,)) == 0:
+        raise HTTPException(404, "no such graded copy")

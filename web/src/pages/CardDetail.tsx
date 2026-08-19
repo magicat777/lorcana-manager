@@ -200,6 +200,22 @@ export default function CardDetail() {
               <button className="secondary" disabled={saving} onClick={() => bump('qty_foil', 1)}>+</button>
             </div>
           </div>
+          {(card.graded?.length ?? 0) > 0 && (
+            <div className="panel">
+              <h3 style={{ marginTop: 0 }}>Collector grading</h3>
+              {card.graded!.map((g) => (
+                <p key={g.id} style={{ margin: '0.25rem 0' }}>
+                  {g.foil && '✦ '}
+                  <strong>{g.status.toUpperCase()}</strong>
+                  {g.grader && <> · {g.grader} {g.grade ?? '?'}{g.cert_id && <span className="muted"> (cert {g.cert_id})</span>}</>}
+                  {g.declared_value != null && <> · declared {money(g.declared_value)}</>}
+                </p>
+              ))}
+              <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
+                Submitted/graded copies are excluded from deck-building availability.
+              </p>
+            </div>
+          )}
           <AddToWantList cardId={card.id} />
         </div>
       </div>

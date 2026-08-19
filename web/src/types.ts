@@ -35,6 +35,12 @@ export interface Card {
   illustrators?: string[]
   released_at?: string
   price_history?: { captured_at: string; usd: string | number | null; usd_foil: string | number | null }[]
+  qty_slabbed?: number
+  graded?: {
+    id: number; foil: boolean; status: 'raw' | 'submitted' | 'graded'
+    grader: string | null; cert_id: string | null; grade: string | null
+    declared_value: string | number | null; notes: string | null
+  }[]
 }
 
 export interface SetInfo {

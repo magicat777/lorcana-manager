@@ -124,3 +124,28 @@ was never imported.
 - `lorcana_sim_calibration` (MCP) / `GET /api/sim/calibration` — sim win
   rates vs real records per matchup, Wilson CIs both sides; `DIVERGES` rows
   are where replay divergences and policy gaps are most likely hiding.
+
+## Availability semantics change: collector grading (2026-08-19)
+
+Migration 030 adds a collector-grading lifecycle (`graded_copies`: one row
+per physical copy, status raw → submitted → graded). The part that touches
+sim-side assumptions: **free-copy availability now excludes slabbed copies**
+— everywhere `free` is computed it is `owned − allocated_to_built_decks −
+slabbed(submitted|graded)`, and card/deck API payloads carry new
+`qty_slabbed` / `slabbed` fields.
+
+What this means for the sim session:
+
+- **Sim runs and scouting are unaffected** — sim-only decks never touch
+  ownership, and `engine_coverage` / the replay corpus don't care whether a
+  copy is slabbed.
+- **Physical-build advice must respect it**: anything reading
+  `/decks/{id}` free columns, `/decks/{id}/buildable`, or the want lists
+  already gets slab-adjusted numbers for free. Don't recompute availability
+  from `collection` counts directly — a graded PSA-10 copy still sits in
+  `qty_normal` (it's owned) but cannot be sleeved into a deck.
+- `status='raw'` = earmarked for grading, still playable; only
+  submitted/graded are out of the pool.
+- New shared MCP tools after reconnect: `lorcana_graded` (portfolio),
+  `lorcana_grade_card` (lifecycle writes; omitted = untouched, '' clears,
+  0 is a real declared value).

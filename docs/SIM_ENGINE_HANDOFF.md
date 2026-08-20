@@ -178,3 +178,18 @@ sim_only is not a disposability proxy. Also landed from the same review:
 (previously validated then silently dropped — every queued run stored NULL),
 and the web Sim page's paired-delta grouping + re-run button now carry
 `opponent_policy`, closing the client-side gap in your same_pilots gate.
+
+Two follow-ons from the same review worth your attention: (1)
+`deploy/release.sh`'s api manifests list was missing
+`jobs/collection-snapshot-cronjob.yaml`, so every `./release.sh api` would
+have silently left the snapshot cronjob pinned to the previous image — fixed
+by adding the sixth file; if you add another job yaml that pins the api
+image, it must go into BOTH the release.sh list and the guide's §3.2 six-file
+list. (2) Because queue_sim dropped `opponent_policy` until today, every
+historical `sim_deck_runs` row has it NULL — your `/sim/compare` fallback
+(`opponent_policy or policy`) reads those as same-pilot, which was true in
+practice only because the worker defaulted that way. Runs queued from now on
+carry the requested value; if you ever intended a different opponent pilot
+on a pre-2026-08-20 run, that intent was never stored. `require_build` is
+now persisted too but still has no reader — wiring the claim-path guard
+remains on your side.

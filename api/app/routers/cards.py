@@ -1,9 +1,31 @@
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from .. import db
 from ..services.matching import norm_number
 
 router = APIRouter()
+
+
+def slabbed_count_sql(col: str) -> str:
+    """Copies of `col` in the grading pipeline and OUT of the player pool.
+    One definition — cards.py and decks.py both build availability from it."""
+    return ("COALESCE((SELECT count(*) FROM graded_copies g WHERE g.card_id = "
+            f"{col} AND g.status IN ('submitted','graded')), 0)")
+
+
+def find_card_printings(name: str) -> list[dict]:
+    """All printings matching a card name, standard rarities first, newest
+    first — the single disambiguation heuristic shared by want lists and
+    grading (callers decide what to do with multiple hits)."""
+    return db.query(
+        """SELECT c.id, c.full_name, s.code AS set_code, c.collector_number, c.rarity
+           FROM cards c JOIN sets s ON s.id = c.set_id
+           WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
+           ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
+                    s.released_at DESC NULLS LAST""",
+        (name.strip(), name.strip()))
+
 
 CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_legal, c.collector_number,
   c.name, c.version, c.full_name, c.ink, c.inks, c.cost, c.inkwell, c.type, c.classifications,
@@ -13,9 +35,8 @@ CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_le
   COALESCE((SELECT sum(dc.qty) FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
             WHERE dc.card_id = c.id AND d.in_use
               AND d.format = 'constructed'), 0) AS qty_in_use,
-  COALESCE((SELECT count(*) FROM graded_copies g WHERE g.card_id = c.id
-            AND g.status IN ('submitted','graded')), 0) AS qty_slabbed,
-  (ec.card_id IS NOT NULL) AS sim_playable"""
+  {slabbed} AS qty_slabbed,
+  (ec.card_id IS NOT NULL) AS sim_playable""".format(slabbed=slabbed_count_sql("c.id"))
 
 CARD_FROM = """FROM cards c
   JOIN sets s ON s.id = c.set_id
@@ -123,8 +144,6 @@ def card_detail(set_code: str, number: str):
 
 # --- collector grading lifecycle ---------------------------------------------
 
-from pydantic import BaseModel  # noqa: E402
-
 GRADE_STATUSES = ("raw", "submitted", "graded")
 
 
@@ -174,19 +193,19 @@ def list_graded():
 def add_graded(body: GradedIn):
     if body.status not in GRADE_STATUSES:
         raise HTTPException(422, f"status must be one of {GRADE_STATUSES}")
-    card_id = body.card_id
+    card_id, resolved, other_printings = body.card_id, None, []
     if not card_id:
         if not body.card.strip():
             raise HTTPException(422, "provide card_id or card")
-        hit = db.query_one(
-            """SELECT c.id FROM cards c JOIN sets s ON s.id = c.set_id
-               WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
-               ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
-                        s.released_at DESC NULLS LAST LIMIT 1""",
-            (body.card.strip(), body.card.strip()))
-        if not hit:
+        hits = find_card_printings(body.card)
+        if not hits:
             raise HTTPException(422, f"no card named {body.card!r}")
-        card_id = hit["id"]
+        # Collectors often slab premium printings — never resolve silently:
+        # take the standard print but ECHO the choice and the alternates so
+        # the caller can correct with an explicit card_id.
+        card_id = hits[0]["id"]
+        resolved = hits[0]
+        other_printings = hits[1:]
     owned = db.query_one(
         "SELECT COALESCE(qty_normal,0) AS n, COALESCE(qty_foil,0) AS f "
         "FROM collection WHERE card_id=%s", (card_id,)) or {"n": 0, "f": 0}
@@ -211,7 +230,8 @@ def add_graded(body: GradedIn):
         (card_id, body.foil, body.status, body.grader or None, body.cert_id or None,
          body.grade or None, body.declared_value, body.status, body.status,
          body.notes or None))
-    return {"id": row["id"], "card_id": card_id, "status": body.status}
+    return {"id": row["id"], "card_id": card_id, "status": body.status,
+            "resolved": resolved, "other_printings": other_printings}
 
 
 @router.put("/graded/{copy_id}")
@@ -224,12 +244,21 @@ def update_graded(copy_id: int, body: GradedUpdate):
     for field in ("status", "foil", "grader", "cert_id", "grade", "declared_value", "notes"):
         v = getattr(body, field)
         if v is not None:
+            if field == "declared_value" and v < 0:
+                v = None               # floats can't use the ''-clears trick
             sets.append(f"{field}=%s")
             params.append(v if v != "" else None)
+    # Timestamps track the CURRENT status truthfully in both directions:
+    # forward transitions stamp, regressions clear what no longer holds.
     if body.status == "submitted":
         sets.append("submitted_at=COALESCE(submitted_at, CURRENT_DATE)")
-    if body.status == "graded":
+        sets.append("graded_at=NULL")
+    elif body.status == "graded":
+        sets.append("submitted_at=COALESCE(submitted_at, CURRENT_DATE)")
         sets.append("graded_at=COALESCE(graded_at, CURRENT_DATE)")
+    elif body.status == "raw":
+        sets.append("submitted_at=NULL")
+        sets.append("graded_at=NULL")
     row = db.query_one(
         f"UPDATE graded_copies SET {', '.join(sets)} WHERE id=%s RETURNING *",
         params + [copy_id])

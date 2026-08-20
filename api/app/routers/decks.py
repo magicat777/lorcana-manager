@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 
 from .. import db
 from ..services import deck_import
+from .cards import find_card_printings, slabbed_count_sql
+
+_SLABBED_DC = slabbed_count_sql("dc.card_id")
+_SLABBED_C = slabbed_count_sql("c.id")
 
 router = APIRouter()
 
@@ -84,7 +88,7 @@ def _deck_row(deck_id: int) -> dict:
     if not deck:
         raise HTTPException(404, "no such deck")
     deck["cards"] = db.query(
-        """SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type, c.price_usd,
+        f"""SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type, c.price_usd,
                   c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
                   s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
                   (ec.card_id IS NOT NULL) AS sim_playable,
@@ -94,9 +98,7 @@ def _deck_row(deck_id: int) -> dict:
                             WHERE dc2.card_id = dc.card_id AND d2.in_use
                               AND d2.format = 'constructed'
                               AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere,
-                  COALESCE((SELECT count(*) FROM graded_copies g
-                            WHERE g.card_id = dc.card_id
-                              AND g.status IN ('submitted','graded')), 0) AS slabbed
+                  {_SLABBED_DC} AS slabbed
            FROM deck_cards dc
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
@@ -467,7 +469,7 @@ def _buildable(deck: dict) -> dict:
     cards = [
         {
             "card_id": c["card_id"], "full_name": c["full_name"],
-            "need": c["qty"], "have": c["owned"],
+            "need": c["qty"], "have": c["owned"], "slabbed": c["slabbed"],
             "allocated_elsewhere": c["allocated_elsewhere"], "free": c["free"],
             "missing": max(0, c["qty"] - c["free"]),
             # float, not Decimal: this dict also rides in 409 details, which
@@ -661,14 +663,12 @@ def wantlist():
     Assumes you want every flagged deck buildable simultaneously."""
     skips = {r["card_id"] for r in db.query("SELECT card_id FROM wantlist_skips")}
     rows = db.query(
-        """SELECT c.id AS card_id, c.full_name, s.code AS set_code,
+        f"""SELECT c.id AS card_id, c.full_name, s.code AS set_code,
                   c.collector_number, c.rarity, c.price_usd,
                   sum(dc.qty) AS qty_wanted,
                   array_agg(DISTINCT d.name ORDER BY d.name) AS decks,
-                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
-                    - COALESCE((SELECT count(*) FROM graded_copies g
-                                WHERE g.card_id = c.id
-                                  AND g.status IN ('submitted','graded')), 0) AS owned,
+                  GREATEST(0, COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
+                    - {_SLABBED_C}) AS owned,
                   COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                             JOIN decks d2 ON d2.id = dc2.deck_id
                             WHERE dc2.card_id = c.id AND d2.in_use
@@ -799,12 +799,10 @@ def _wantlist_items(wl: dict) -> list[dict]:
     if wl.get("deck_id"):
         manual_ids = {i["card_id"] for i in items}
         for r in db.query(
-                """SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.set_id,
+                f"""SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.set_id,
                           c.collector_number, c.rarity, c.price_usd, dc.qty AS qty_wanted,
-                          COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
-                            - COALESCE((SELECT count(*) FROM graded_copies g
-                                        WHERE g.card_id = c.id
-                                          AND g.status IN ('submitted','graded')), 0) AS owned,
+                          GREATEST(0, COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
+                            - {_SLABBED_C}) AS owned,
                           COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
                                     JOIN decks d2 ON d2.id = dc2.deck_id
                                     WHERE dc2.card_id = c.id AND d2.in_use
@@ -879,13 +877,7 @@ def set_want_list_card(list_id: int, body: WantListCardIn):
     if not card_id:
         if not body.card.strip():
             raise HTTPException(422, "provide card_id or card")
-        hits = db.query(
-            """SELECT c.id, c.full_name, s.code AS set_code, c.collector_number
-               FROM cards c JOIN sets s ON s.id = c.set_id
-               WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
-               ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
-                        s.released_at DESC NULLS LAST""",
-            (body.card.strip(), body.card.strip()))
+        hits = find_card_printings(body.card)
         if not hits:
             raise HTTPException(422, f"no card named {body.card!r}")
         card_id = hits[0]["id"]
@@ -925,7 +917,10 @@ def set_in_use(deck_id: int, body: InUseIn):
                     (deck_id, [d["id"] for d in donors],
                      [m["card_id"] for m in b["missing"]]))}
                 after_pull_missing = [m for m in (
-                    {**m, "missing": max(0, m["need"] - max(0, m["have"] - rem.get(m["card_id"], 0)))}
+                    # have minus slabbed: copies in the grading pipeline are
+                    # not pullable inventory, matching the free-count rule.
+                    {**m, "missing": max(0, m["need"] - max(
+                        0, m["have"] - m.get("slabbed", 0) - rem.get(m["card_id"], 0)))}
                     for m in b["missing"]) if m["missing"] > 0]
             if body.pull_from_decks and donors and not after_pull_missing:
                 # Cannibalize: donors stop being built (their recipes stay

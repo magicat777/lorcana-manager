@@ -121,8 +121,8 @@ export default function DeckDetail() {
         case 'name': return c.full_name.toLowerCase()
         case 'cost': return c.cost ?? -1
         case 'type': return (c.type ?? []).join(' ')
-        case 'owned': return c.owned
-        case 'free': return c.free
+        case 'owned': return c.owned ?? 0
+        case 'free': return c.free ?? 0
         case 'in_pool': return c.in_pool ?? 0
         default: return 0
       }
@@ -453,7 +453,7 @@ export default function DeckDetail() {
               deck.sim_only ? ''
                 : deck.format === 'sealed'
                   ? ((deck.pool_total ?? 0) > 0 && (c.in_pool ?? 0) < c.qty ? 'bad' : '')
-                  : (c.free < c.qty ? 'bad' : '')
+                  : ((c.free ?? 0) < c.qty ? 'bad' : '')
             }>
               <td>
                 <button className="secondary" onClick={() => setQty(c.card_id, c.qty - 1)}>−</button>{' '}
@@ -471,9 +471,9 @@ export default function DeckDetail() {
                 <td>{c.in_pool ?? 0}</td>
               ) : (
                 <>
-                  <td>{c.owned}</td>
+                  <td>{c.owned ?? '—'}</td>
                   <td title={c.allocated_elsewhere ? `${c.allocated_elsewhere} allocated to other built decks` : ''}>
-                    {c.free}{c.allocated_elsewhere > 0 && <span className="muted"> ({c.allocated_elsewhere} in decks)</span>}
+                    {c.free ?? '—'}{(c.allocated_elsewhere ?? 0) > 0 && <span className="muted"> ({c.allocated_elsewhere} in decks)</span>}
                   </td>
                 </>
               )}

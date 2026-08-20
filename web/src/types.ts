@@ -174,9 +174,10 @@ export interface DeckCardRow {
   core_legal: boolean
   collector_number: string
   image_small: string | null
-  owned: number
-  allocated_elsewhere: number
-  free: number
+  // null on sealed decks: they build from their own pool, not the collection
+  owned: number | null
+  allocated_elsewhere: number | null
+  free: number | null
   in_pool?: number
 }
 

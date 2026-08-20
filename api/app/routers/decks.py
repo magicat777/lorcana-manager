@@ -64,16 +64,47 @@ def _validate(cards: list[dict], fmt: str = "constructed") -> list[str]:
     for name, qty in sorted(by_name.items()):
         if qty > 4:
             warnings.append(f"{qty} copies of {name!r} (max 4 per name)")
+    # CR 1.10.1.3: a card in the deck may carry a deck-building ability that
+    # relaxes the 2-ink rule. Mirrors Engine.INK_EXCEPTION_ENABLERS in
+    # Lorcana-Sim (src/lorcana_engine/engine.py) — keep the two in step.
+    # Christopher Robin - Hunny Sage [13/61] GATHER THE PARTY:
+    #   "You can have other Hunny characters in your deck regardless of ink type."
+    enablers = {"Christopher Robin - Hunny Sage": "Hunny"}
+    exempt_classes = {cls for c in cards
+                      if (cls := enablers.get(c["full_name"])) is not None}
+
+    def ink_exempt(c: dict) -> bool:
+        # "other ... characters": the enabler itself still counts toward the
+        # deck's inks, and only characters are exempted — a Hunny item or
+        # action is NOT covered by GATHER THE PARTY.
+        return (
+            bool(exempt_classes)
+            and "Character" in (c.get("type") or [])
+            and c["full_name"] not in enablers
+            and bool(set(c.get("classifications") or []) & exempt_classes)
+        )
+
     mono: set[str] = set()
     duals: list[tuple[str, set[str]]] = []
+    exempted: list[str] = []
     for c in cards:
         inks = c.get("inks") or ([c["ink"]] if c.get("ink") else [])
+        if ink_exempt(c):
+            exempted.append(c["full_name"])
+            continue
         if len(inks) == 1:
             mono.add(inks[0])
         elif len(inks) > 1:
             duals.append((c["full_name"], set(inks)))
     if len(mono) > 2:
-        warnings.append(f"{len(mono)} inks ({', '.join(sorted(mono))}) — decks may use at most 2")
+        why = ""
+        if exempt_classes:
+            # The enabler is present but did not rescue the deck: say so, or the
+            # warning reads as the known-false-positive it usually is.
+            why = (f" — {'/'.join(sorted(exempt_classes))} exception applied to "
+                   f"{len(exempted)} card(s), these inks remain unexcused")
+        warnings.append(
+            f"{len(mono)} inks ({', '.join(sorted(mono))}) — decks may use at most 2{why}")
     elif len(mono) == 2:
         for name, dinks in duals:
             if not dinks & mono:
@@ -89,7 +120,7 @@ def _deck_row(deck_id: int) -> dict:
         raise HTTPException(404, "no such deck")
     deck["cards"] = db.query(
         f"""SELECT dc.card_id, dc.qty, c.full_name, c.ink, c.inks, c.cost, c.rarity, c.type, c.price_usd,
-                  c.inkwell, c.legalities, c.strength, c.willpower, c.lore,
+                  c.inkwell, c.legalities, c.strength, c.willpower, c.lore, c.classifications,
                   s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
                   (ec.card_id IS NOT NULL) AS sim_playable,
                   COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
@@ -108,10 +139,20 @@ def _deck_row(deck_id: int) -> dict:
            ORDER BY c.cost NULLS LAST, c.full_name""",
         (deck_id,),
     )
+    sealed = deck["format"] == "sealed"
     for c in deck["cards"]:
-        # Slabbed/submitted copies are out of the player pool entirely.
-        c["free"] = max(0, c["owned"] - c["allocated_elsewhere"] - c["slabbed"])
-    if deck["format"] == "sealed":
+        if sealed:
+            # A sealed deck is built from the packs it opened (deck_pool), never
+            # from the collection, so collection-relative ownership is not a fact
+            # about it. Reporting it produced a phantom shortfall: a card held by
+            # an in_use constructed deck read as "free 0" here even though the
+            # sealed copy came out of a booster. Null beats a number that means
+            # nothing; _buildable() and both UIs already branch to in_pool.
+            c["owned"] = c["allocated_elsewhere"] = c["slabbed"] = c["free"] = None
+        else:
+            # Slabbed/submitted copies are out of the player pool entirely.
+            c["free"] = max(0, c["owned"] - c["allocated_elsewhere"] - c["slabbed"])
+    if sealed:
         deck["pool"] = db.query(
             """SELECT dp.card_id, dp.qty, c.full_name, c.ink, c.inks, c.cost,
                       c.rarity, c.type, s.code AS set_code, c.collector_number
@@ -222,7 +263,10 @@ def import_deck(body: DeckImportIn):
 
             # validate BEFORE writing so strict mode can refuse cleanly
             cur.execute(
-                "SELECT id, full_name, ink, inks FROM cards WHERE id = ANY(%s)",
+                # type/classifications feed _validate's CR 1.10.1.3 ink exception;
+                # without them a rainbow Hunny deck fails strict import.
+                "SELECT id, full_name, ink, inks, type, classifications "
+                "FROM cards WHERE id = ANY(%s)",
                 (list(wanted),),
             )
             card_rows = [{**r, "qty": wanted[r["id"]]} for r in cur.fetchall()]

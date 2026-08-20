@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: localhost:30500/lorcana/api:fastapi-20260820-ultra-2
+          image: localhost:30500/lorcana/api:fastapi-20260820-simsess-1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

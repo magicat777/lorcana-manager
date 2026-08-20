@@ -148,4 +148,18 @@ What this means for the sim session:
   submitted/graded are out of the pool.
 - New shared MCP tools after reconnect: `lorcana_graded` (portfolio),
   `lorcana_grade_card` (lifecycle writes; omitted = untouched, '' clears,
-  0 is a real declared value).
+  0 is a real declared value, negative declared_value clears to unset).
+
+**Review-pass correction (2026-08-19 evening).** A 16-finding review of the
+grading integration found and fixed a hole in the invariant this section
+states: the **donor-pull path** (`PUT /decks/{id}/in_use` with
+`pull_from_decks`) originally used raw owned counts, so a deck could be
+marked built — un-building donor decks — while its "available" copies sat in
+slabs. Fixed: every availability computation, donor pulls included, now goes
+through one shared `slabbed_count_sql()` fragment. Also fixed: want-list
+`owned` floors at 0 (a replace re-scan drops slabs from the binder, and
+negative owned inflated need), and grading status regressions now clear
+stale submit/grade dates. Net for the sim session: the "trust the API's
+free/buildable numbers, never recompute from collection counts" rule is now
+enforced without exception — if you cached any availability logic before
+this date, re-read it from the API.

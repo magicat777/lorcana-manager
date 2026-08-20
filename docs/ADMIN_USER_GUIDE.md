@@ -832,7 +832,7 @@ be dictated conversationally between rounds.
 | `lorcana_sim_compare` / `lorcana_sim_coverage` | Compare two runs (Wilson CIs, paired McNemar, comparability gates) / whole-catalog engine coverage. |
 | `lorcana_import_duels_log` | Paste a raw duels.ink game log (either dialect): parses winner/turns/lore/plays/impact + undo markers, auto-detects your seat, infers opponent inks, ranks threats by impact, files a 1-0/0-1 match under the day's duels.ink practice event, stores the full log (quarantined if internally inconsistent). `overwrite` replaces round+log; identical retries no-op; mvp/dead/tags/threat overrides inline. |
 | `lorcana_coverage_priority` | Engine-authoring priority from REAL play: unspecced cards ranked by how often they hit the table in stored logs. |
-| `lorcana_scout_deck` | Auto-draft a sim-only opponent deck from real games vs an ink pair (copy counts from max plays seen, engine-covered filler to 60); re-scouting updates in place. |
+| `lorcana_scout_deck` | Auto-draft a sim-only opponent deck from real games vs an ink pair (copy counts from max plays seen, engine-covered filler to 60). Re-scouting updates in place ONLY for decks scouting created (`created_source='scout'`); a name collision with any other deck — sim-only included — is refused with a 409, never overwritten. |
 | `lorcana_sim_calibration` | Sim win rate vs real record per matchup, Wilson CIs both sides; DIVERGES when intervals don't overlap. |
 | `lorcana_replay_status` | Replay-validation health per engine build + open divergences (see docs/SIM_ENGINE_HANDOFF.md). |
 | `lorcana_export_deck` | Dreamborn text + composition + Core legality (points to the printable web sheet). |
@@ -900,8 +900,8 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `PUT /wantlists/{id}/cards` | Upsert a card on a named list by id or name (standard printing preferred; qty=0 removes). |
 | `POST/GET /duels/logs`, `GET/DELETE /duels/logs/{id}` | Store / list (`match_id` filter) / read / delete full duels.ink game logs (delete is used by overwrite re-imports). |
 | `GET /duels/coverage-priority` | Cards seen in real games vs engine coverage, ranked by play frequency. |
-| `POST /duels/scout` | Auto-draft a sim-only opponent deck from real games (`inks`, `shape`, `handle`, `save`, `covered_only`). |
+| `POST /duels/scout` | Auto-draft a sim-only opponent deck from real games (`inks`, `shape`, `handle`, `save`, `covered_only`). Upserts only onto `created_source='scout'` decks; any other name collision 409s (guard added after this path could bypass the tombstone system). |
 | `GET /duels/replay-corpus` | Real-game corpus for the engine's replay validator (card_map + replayable flag; quarantined logs excluded unless `include_excluded`). |
 | `POST /duels/replay-validations`, `GET /duels/replay-status` | Engine posts per-game verdicts / per-build health + divergences. |
 | `GET /sim/calibration` | Sim vs real win rates per matchup, Wilson CIs, divergence verdicts. |
-| `/sim/*` (runs, results, compare, coverage) | Sim-engine pipeline endpoints — see `api/app/routers/sim.py` and the Lorcana-Sim repo. |
+| `/sim/*` (runs, results, compare, coverage) | Sim-engine pipeline endpoints — see `api/app/routers/sim.py` and the Lorcana-Sim repo. `queue_sim` persists `opponent_policy`/`require_build` (a result is uninterpretable without the opponent pilot); the web Sim page's paired deltas and re-runs carry them too. |

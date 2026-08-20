@@ -61,6 +61,10 @@ export default function Sim() {
         opponent: r.opponent,
         games: r.games,
         policy: r.policy,
+        // Forward the pilots too — "identical shuffles" is only a paired
+        // comparison if the opponent policy and build gate match the source.
+        opponent_policy: r.opponent_policy ?? null,
+        ...(r.require_build ? { require_build: r.require_build } : {}),
         analyze: r.analyze_requested,
         seed_base: r.seed_base,
         requested_by: 'webui-paired',
@@ -217,7 +221,7 @@ export default function Sim() {
           ))}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={10} className="muted">
+              <td colSpan={11} className="muted">
                 No simulations yet.
               </td>
             </tr>
@@ -276,7 +280,7 @@ function PairedDeltas({ runs }: { runs: SimRun[] }) {
   const groups = new Map<string, SimRun[]>()
   for (const r of runs) {
     if (r.status !== 'complete' || r.seed_base == null) continue
-    const k = `${r.deck_id}|${r.opponent}|${r.seed_base}|${r.games}|${r.policy}`
+    const k = `${r.deck_id}|${r.opponent}|${r.seed_base}|${r.games}|${r.policy}|${r.opponent_policy ?? ''}`
     groups.set(k, [...(groups.get(k) ?? []), r])
   }
   const pairs = [...groups.values()].filter((g) => g.length > 1).slice(0, 3)

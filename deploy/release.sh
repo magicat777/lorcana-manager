@@ -38,7 +38,7 @@ done
 case "$component" in
   api) repo="lorcana/api"; prefix="fastapi"; context="../api"; deployment="lorcana-api"
        primary="api/deployment.yaml"
-       manifests="api/deployment.yaml jobs/daily-brief-cronjob.yaml jobs/news-fetch-cronjob.yaml jobs/price-refresh-cronjob.yaml jobs/seed-job.yaml" ;;
+       manifests="api/deployment.yaml jobs/daily-brief-cronjob.yaml jobs/news-fetch-cronjob.yaml jobs/price-refresh-cronjob.yaml jobs/seed-job.yaml jobs/collection-snapshot-cronjob.yaml" ;;
   web) repo="lorcana/web"; prefix="nginx"; context="../web"; deployment="lorcana-web"
        primary="web/deployment.yaml"
        manifests="web/deployment.yaml" ;;

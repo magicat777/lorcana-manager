@@ -693,8 +693,19 @@ def scout_opponent_deck(body: ScoutIn):
                VALUES (%s,%s,'scout','constructed',true)
                ON CONFLICT (name) DO UPDATE
                SET notes=EXCLUDED.notes, updated_at=now(), updated_source='scout'
+               WHERE decks.created_source = 'scout'
                RETURNING id""", (name, notes))
-        deck_id = cur.fetchone()["id"]
+        row = cur.fetchone()
+        if row is None:
+            # The name collided with a deck scouting didn't create. Only
+            # scout-created decks may be re-scouted in place — sim_only is NOT
+            # a proxy for disposable (a real deck can be flagged sim_only for
+            # engine testing, as deck #25 was when this guard was first too
+            # loose and cost it its recipe).
+            raise HTTPException(
+                409, f"deck {name!r} already exists and was not created by "
+                     "scouting — refusing to overwrite it; pass a different name")
+        deck_id = row["id"]
         cur.execute("DELETE FROM deck_cards WHERE deck_id=%s", (deck_id,))
         for c in observed + filler:
             cur.execute("INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (%s,%s,%s)",

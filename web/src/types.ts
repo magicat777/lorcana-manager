@@ -323,6 +323,9 @@ export interface SimRun {
   opponent_label: string | null
   games: number
   policy: string
+  opponent_policy?: string | null
+  require_build?: string | null
+  outcomes?: string | null
   seed_base: number | null
   status: 'queued' | 'running' | 'complete' | 'unsupported' | 'error'
   requested_by: string | null

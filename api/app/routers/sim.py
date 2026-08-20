@@ -144,10 +144,11 @@ def queue_sim(deck_id: int, body: SimRequestIn):
             raise HTTPException(404, "no such opponent deck")
     return db.query_one(
         f"""INSERT INTO sim_deck_runs
-              (deck_id, opponent, games, policy, requested_by, analyze_requested, seed_base)
-            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
-        (deck_id, body.opponent, body.games, body.policy, body.requested_by,
-         body.analyze, body.seed_base))
+              (deck_id, opponent, games, policy, opponent_policy, require_build,
+               requested_by, analyze_requested, seed_base)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {RUN_COLS}""",
+        (deck_id, body.opponent, body.games, body.policy, body.opponent_policy,
+         body.require_build, body.requested_by, body.analyze, body.seed_base))
 
 
 @router.get("/sim/runs")

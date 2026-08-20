@@ -163,3 +163,18 @@ stale submit/grade dates. Net for the sim session: the "trust the API's
 free/buildable numbers, never recompute from collection counts" rule is now
 enforced without exception — if you cached any availability logic before
 this date, re-read it from the API.
+
+**Incident note (2026-08-20): deck #25 briefly overwritten, restored from
+backup.** An ultrareview fix added a name-collision guard to
+`/duels/scout`, but its first version treated `sim_only` as "safe to
+overwrite" — and deck #25 (Hunny Rescue v5.2, flagged sim_only for
+pre-build engine testing) was clobbered during verification. It was fully
+restored from the 02:00 PT backup (recipe + notes; the sim_only flag and
+anything set after 02:00 was untouched by the restore — worth a quick
+sanity check if you edited #25 between 02:00 and ~17:30 PT). The guard now
+permits in-place re-scouting ONLY for `created_source='scout'` decks;
+sim_only is not a disposability proxy. Also landed from the same review:
+`queue_sim` now actually persists `opponent_policy`/`require_build`
+(previously validated then silently dropped — every queued run stored NULL),
+and the web Sim page's paired-delta grouping + re-run button now carry
+`opponent_policy`, closing the client-side gap in your same_pilots gate.

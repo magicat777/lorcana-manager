@@ -24,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: refresh
-              image: localhost:30500/lorcana/api:fastapi-20260819-review-2
+              image: localhost:30500/lorcana/api:fastapi-20260820-ultra-2
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.refresh_prices"]
               envFrom:

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { get, send, upload } from '../api'
+import { get, send, uploadWithProgress } from '../api'
 import type { Deck, ImportDiff, ImportHistoryRow, ImportReport } from '../types'
 
 const DIFF_DISPLAY_CAP = 60
@@ -118,6 +118,7 @@ export default function Upload() {
   const [report, setReport] = useState<ImportReport | null>(null)
   const [history, setHistory] = useState<ImportHistoryRow[]>([])
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<{ phase: 'uploading' | 'processing'; pct: number } | null>(null)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -144,8 +145,10 @@ export default function Upload() {
     form.append('dry_run', String(dryRun))
     form.append('force', String(force))
     form.append('note', note)
+    setProgress({ phase: 'uploading', pct: 0 })
     try {
-      setReport(await upload<ImportReport>('/imports', form))
+      setReport(await uploadWithProgress<ImportReport>('/imports', form,
+        (phase, pct) => setProgress({ phase, pct })))
       loadHistory()
     } catch (e) {
       const err = e as Error & { status?: number }
@@ -158,6 +161,7 @@ export default function Upload() {
       }
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -267,6 +271,23 @@ export default function Upload() {
           </button>
         )}
       </div>
+
+      {progress && (
+        <div style={{ margin: '0.6rem 0', maxWidth: 480 }}>
+          <div className="progress">
+            <div style={{
+              width: progress.phase === 'uploading' ? `${Math.round(progress.pct * 100)}%` : '100%',
+              transition: 'width 0.2s',
+              ...(progress.phase === 'processing' ? { opacity: 0.7 } : {}),
+            }} />
+          </div>
+          <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.8rem' }}>
+            {progress.phase === 'uploading'
+              ? `Uploading… ${Math.round(progress.pct * 100)}%`
+              : 'Server processing (matching cards, computing diff)…'}
+          </p>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 

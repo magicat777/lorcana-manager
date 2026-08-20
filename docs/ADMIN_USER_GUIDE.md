@@ -119,6 +119,7 @@ lorcana/
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
+| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`) |
 
 **Most common operations, one-liners:**
 

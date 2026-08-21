@@ -301,6 +301,8 @@ export interface SetStats {
   released_at: string | null
   cards_in_set: number
   unique_owned: number
+  base_in_set: number
+  base_owned: number
   playsets: number
   total_qty: number
   value: string | number

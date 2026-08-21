@@ -314,20 +314,28 @@ export default function Stats() {
       )}
 
       {sets.map((s) => {
-        const pct = s.cards_in_set ? (100 * s.unique_owned) / s.cards_in_set : 0
-        const playsetPct = s.cards_in_set ? (100 * s.playsets) / s.cards_in_set : 0
+        const basePct = s.base_in_set ? (100 * s.base_owned) / s.base_in_set : 0
+        const masterPct = s.cards_in_set ? (100 * s.unique_owned) / s.cards_in_set : 0
+        const playsetPct = s.base_in_set ? (100 * s.playsets) / s.base_in_set : 0
         return (
           <div className="panel" key={s.code}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <strong>{s.code} — {s.name}</strong>
               <span className="muted">
-                {s.unique_owned}/{s.cards_in_set} unique ({pct.toFixed(1)}%) · {s.total_qty} copies · {money(s.value)}
+                base {s.base_owned}/{s.base_in_set} ({basePct.toFixed(1)}%) ·
+                master {s.unique_owned}/{s.cards_in_set} ({masterPct.toFixed(1)}%) ·
+                {' '}{s.total_qty} copies · {money(s.value)}
               </span>
             </div>
-            <div style={{ margin: '0.5rem 0 0.3rem' }} className="progress">
-              <div style={{ width: `${pct}%` }} />
+            <div style={{ margin: '0.5rem 0 0.3rem' }} className="progress"
+              title={`Base set (standard rarities): ${s.base_owned}/${s.base_in_set}`}>
+              <div style={{ width: `${basePct}%` }} />
             </div>
-            <div className="progress playset" title="Playsets (4+ copies)">
+            <div className="progress" style={{ opacity: 0.55, marginBottom: '0.3rem' }}
+              title={`Master set (incl. Enchanted/Epic/Iconic): ${s.unique_owned}/${s.cards_in_set}`}>
+              <div style={{ width: `${masterPct}%` }} />
+            </div>
+            <div className="progress playset" title="Playsets (4+ copies, base set)">
               <div style={{ width: `${playsetPct}%` }} />
             </div>
           </div>

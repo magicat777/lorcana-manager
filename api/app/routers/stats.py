@@ -27,6 +27,12 @@ def per_set():
         """SELECT s.code, s.name, s.released_at,
                   count(c.id) AS cards_in_set,
                   count(c.id) FILTER (WHERE COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) > 0) AS unique_owned,
+                  -- Base set = the printed N/XXX range: standard rarities only.
+                  -- Enchanted/Epic/Iconic are chase variants above the printed
+                  -- denominator; counting them deflated completion vs reality.
+                  count(c.id) FILTER (WHERE c.rarity NOT IN ('Enchanted','Epic','Iconic')) AS base_in_set,
+                  count(c.id) FILTER (WHERE c.rarity NOT IN ('Enchanted','Epic','Iconic')
+                    AND COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) > 0) AS base_owned,
                   count(c.id) FILTER (WHERE COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) >= 4) AS playsets,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_qty,
                   COALESCE(sum(col.qty_normal * c.price_usd + col.qty_foil * c.price_usd_foil), 0)::numeric(12,2) AS value

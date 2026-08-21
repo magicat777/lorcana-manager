@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { get, money, send } from '../api'
 import { InkDots } from '../components/CardGrid'
+import FoilCard from '../components/FoilCard'
 import RarityIcon from '../components/RarityIcon'
 import Sparkline from '../components/Sparkline'
 import type { Card } from '../types'
@@ -120,7 +121,10 @@ export default function CardDetail() {
         <Link to="/">← back to cards</Link>
       </p>
       <div className="detail">
-        {card.image_large && <img src={card.image_large} alt={card.full_name} />}
+        {card.image_large && (
+          <FoilCard src={card.image_large} alt={card.full_name}
+            active={card.qty_foil > 0 || card.rarity === 'Enchanted'} />
+        )}
         <div style={{ maxWidth: 560 }}>
           <h1 style={{ marginBottom: 0 }}>{card.full_name}</h1>
           <p className="muted">

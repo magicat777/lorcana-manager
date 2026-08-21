@@ -626,6 +626,12 @@ panel (which decks use it, `◈ built` markers, allocated vs free copy counts),
 and an **In collection** panel with −/+ steppers for normal and foil counts —
 this is the manual way to adjust quantities without a re-import.
 
+When you own a foil copy (or the printing is an Enchanted, which only exist
+foil), the card art gets a **foil effect**: pointer-driven 3D tilt with a
+prismatic sheen and glare (`components/FoilCard.tsx`). The flat digital
+renders can't capture the physical foil treatment — Enchanteds especially
+read washed-out — so this simulates it, same idea as Dreamborn's card view.
+
 A **Collector grading** panel appears whenever the card has copies in the
 grading pipeline (mig 030): per-copy status (RAW/SUBMITTED/GRADED), grader +
 grade + cert, and declared value. Submitted/graded copies are collector

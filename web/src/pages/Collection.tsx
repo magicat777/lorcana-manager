@@ -52,10 +52,10 @@ const FILTER_KEY = 'cards.filters'
 
 const loadFilters = () => {
   try {
-    return { q: '', set: '', ink: '', rarity: '', owned: 'all', core: false, page: 1,
+    return { q: '', set: '', ink: '', rarity: '', lore: '', owned: 'all', core: false, page: 1,
              ...JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}') }
   } catch {
-    return { q: '', set: '', ink: '', rarity: '', owned: 'all', core: false, page: 1 }
+    return { q: '', set: '', ink: '', rarity: '', lore: '', owned: 'all', core: false, page: 1 }
   }
 }
 
@@ -66,6 +66,7 @@ export default function Collection() {
   const [set, setSet] = useState<string>(saved.set)
   const [ink, setInk] = useState<string>(saved.ink)
   const [rarity, setRarity] = useState<string>(saved.rarity)
+  const [lore, setLore] = useState<string>(saved.lore)
   const [owned, setOwned] = useState<string>(saved.owned)
   const [core, setCore] = useState<boolean>(saved.core)
   const [page, setPage] = useState<number>(saved.page)
@@ -78,18 +79,18 @@ export default function Collection() {
 
   // Filters survive card-detail visits / browser back until Reset (per tab).
   useEffect(() => {
-    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, owned, core, page }))
-  }, [q, set, ink, rarity, owned, core, page])
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, lore, owned, core, page }))
+  }, [q, set, ink, rarity, lore, owned, core, page])
 
-  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || owned !== 'all' || core
+  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || lore !== '' || owned !== 'all' || core
   const resetFilters = () => {
     sessionStorage.removeItem(FILTER_KEY)
-    setQ(''); setSet(''); setInk(''); setRarity(''); setOwned('all'); setCore(false); setPage(1)
+    setQ(''); setSet(''); setInk(''); setRarity(''); setLore(''); setOwned('all'); setCore(false); setPage(1)
   }
 
   useEffect(() => {
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q, set, ink, rarity, owned, page, ...(core ? { core: 'true' } : {}) })
+      get<SearchResult>('/cards', { q, set, ink, rarity, lore, owned, page, ...(core ? { core: 'true' } : {}) })
         .then((d) => {
           setData(d)
           setError('')
@@ -97,7 +98,7 @@ export default function Collection() {
         .catch((e) => setError(String(e)))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, set, ink, rarity, owned, core, page])
+  }, [q, set, ink, rarity, lore, owned, core, page])
 
   const reset = () => setPage(1)
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1
@@ -127,6 +128,13 @@ export default function Collection() {
           {INKS.map((i) => <option key={i}>{i}</option>)}
         </select>
         <RarityFilter value={rarity} onChange={(r) => { setRarity(r); reset() }} />
+        <select value={lore} onChange={(e) => { setLore(e.target.value); reset() }}
+          title="Printed lore value (not effect-granted)">
+          <option value="">Any lore</option>
+          {['0', '1', '2', '3', '4', '5'].map((l) => (
+            <option key={l} value={l}>{l} lore</option>
+          ))}
+        </select>
         <select value={owned} onChange={(e) => { setOwned(e.target.value); reset() }}>
           <option value="all">Owned + missing</option>
           <option value="owned">Owned only</option>

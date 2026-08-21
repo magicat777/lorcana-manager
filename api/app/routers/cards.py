@@ -61,6 +61,7 @@ def search_cards(
     ink: str = "",
     rarity: str = "",
     type: str = "",
+    lore: str = Query("", pattern="^[0-5]?$"),
     owned: str = Query("all", pattern="^(all|owned|missing)$"),
     sim: str = Query("all", pattern="^(all|playable|unplayable)$"),
     core: bool = False,
@@ -84,6 +85,10 @@ def search_cards(
     if type:
         where.append("%s = ANY(c.type)")
         params.append(type)
+    if lore != "":
+        # Printed lore only — effect-granted lore is rules text, not a column.
+        where.append("c.lore = %s")
+        params.append(int(lore))
     if core:
         where.append("s.core_legal")
     if sim == "playable":

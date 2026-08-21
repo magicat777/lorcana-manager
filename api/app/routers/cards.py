@@ -155,6 +155,8 @@ GRADE_STATUSES = ("raw", "submitted", "graded")
 class GradedIn(BaseModel):
     card_id: str = ""
     card: str = ""                     # name lookup alternative
+    set_code: str = ""                 # printing-exact alternative (with number)
+    number: str = ""
     foil: bool = False
     status: str = "raw"
     grader: str = ""
@@ -198,31 +200,63 @@ def list_graded():
 def add_graded(body: GradedIn):
     if body.status not in GRADE_STATUSES:
         raise HTTPException(422, f"status must be one of {GRADE_STATUSES}")
+    def _capacity(cid: str) -> tuple[int, int]:
+        owned = db.query_one(
+            "SELECT COALESCE(qty_normal,0) AS n, COALESCE(qty_foil,0) AS f "
+            "FROM collection WHERE card_id=%s", (cid,)) or {"n": 0, "f": 0}
+        have = owned["f"] if body.foil else owned["n"]
+        tracked = db.query_one(
+            "SELECT count(*) AS n FROM graded_copies WHERE card_id=%s AND foil=%s",
+            (cid, body.foil))["n"]
+        return have, tracked
+
     card_id, resolved, other_printings = body.card_id, None, []
+    if not card_id and body.set_code and body.number:
+        # Printing-exact addressing, same lookup the card-detail page uses —
+        # the natural way to name a premium print ("13/241").
+        hit = db.query_one(
+            """SELECT c.id, c.full_name, s.code AS set_code, c.collector_number, c.rarity
+               FROM cards c JOIN sets s ON s.id = c.set_id
+               WHERE s.code = %s AND lower(ltrim(c.collector_number, '0')) = %s""",
+            (body.set_code, norm_number(body.number)))
+        if not hit:
+            raise HTTPException(422, f"no card {body.set_code}/{body.number}")
+        card_id, resolved = hit["id"], hit
     if not card_id:
         if not body.card.strip():
-            raise HTTPException(422, "provide card_id or card")
+            raise HTTPException(422, "provide card_id, set_code+number, or card")
         hits = find_card_printings(body.card)
         if not hits:
             raise HTTPException(422, f"no card named {body.card!r}")
-        # Collectors often slab premium printings — never resolve silently:
-        # take the standard print but ECHO the choice and the alternates so
-        # the caller can correct with an explicit card_id.
-        card_id = hits[0]["id"]
-        resolved = hits[0]
-        other_printings = hits[1:]
-    owned = db.query_one(
-        "SELECT COALESCE(qty_normal,0) AS n, COALESCE(qty_foil,0) AS f "
-        "FROM collection WHERE card_id=%s", (card_id,)) or {"n": 0, "f": 0}
-    have = owned["f"] if body.foil else owned["n"]
-    tracked = db.query_one(
-        "SELECT count(*) AS n FROM graded_copies WHERE card_id=%s AND foil=%s",
-        (card_id, body.foil))["n"]
+        # Ownership-aware resolution: collectors slab premium printings, so
+        # among same-named printings prefer one where the requested finish is
+        # actually owned with untracked capacity — the standard-first order of
+        # find_card_printings only breaks ties.
+        chosen = None
+        for h in hits:
+            have, tracked = _capacity(h["id"])
+            if tracked + 1 <= have:
+                chosen = h
+                break
+        if chosen is None:
+            finish = "foil" if body.foil else "normal"
+            listing = "; ".join(
+                f"{h['set_code']}/{h['collector_number']} {h['rarity']} "
+                f"(owned {_capacity(h['id'])[0]} {finish}, {_capacity(h['id'])[1]} tracked)"
+                for h in hits)
+            raise HTTPException(
+                422, f"no printing of {body.card!r} has an untracked {finish} copy in "
+                     f"the collection — printings: {listing}. Scan/adjust counts first, "
+                     "or pass set_code+number explicitly.")
+        card_id = chosen["id"]
+        resolved = chosen
+        other_printings = [h for h in hits if h["id"] != card_id]
+    have, tracked = _capacity(card_id)
     if tracked + 1 > have:
         finish = "foil" if body.foil else "normal"
         raise HTTPException(
             422, f"collection has {have} {finish} cop{'y' if have == 1 else 'ies'} of this "
-                 f"card and {tracked} already tracked for grading — scan/adjust the "
+                 f"printing and {tracked} already tracked for grading — scan/adjust the "
                  "collection count first")
     row = db.query_one(
         """INSERT INTO graded_copies

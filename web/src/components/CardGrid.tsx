@@ -49,6 +49,7 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
                 {c.full_name}
               </div>
             )}
+            {c.qty_foil > 0 && <span className="tile-sheen" />}
             <span className="qty">
               {c.qty_normal > 0 && <span className="badge">{c.qty_normal}</span>}
               {c.qty_foil > 0 && <span className="badge foil">✦{c.qty_foil}</span>}

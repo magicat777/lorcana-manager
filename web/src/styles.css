@@ -186,6 +186,36 @@ tr.bad td { color: var(--danger); }
     rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.07) 35%, transparent 55%);
   mix-blend-mode: overlay;
 }
+
+/* Grid tiles: CSS-only sheen sweep on hover for foil-owned cards — covers
+   the art (5/7 box at the tile top), not the label row. */
+.cardtile .tile-sheen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 5/7;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(115deg,
+    transparent 25%,
+    rgba(255, 119, 115, 0.6) 37%,
+    rgba(255, 237, 95, 0.55) 44%,
+    rgba(168, 255, 95, 0.55) 51%,
+    rgba(131, 255, 247, 0.55) 58%,
+    rgba(120, 148, 255, 0.6) 65%,
+    rgba(216, 117, 255, 0.6) 72%,
+    transparent 84%);
+  background-size: 300% 300%;
+  background-position: 95% 95%;
+  mix-blend-mode: color-dodge;
+  filter: brightness(0.75) contrast(1.3);
+  transition: opacity 0.25s, background-position 0.9s ease-out;
+}
+.cardtile:hover .tile-sheen {
+  opacity: 0.75;
+  background-position: 5% 5%;
+}
 .foil-hint { margin: 0.3rem 0 0; font-size: 0.75rem; text-align: center; width: 320px; }
 .statrow { display: flex; gap: 1.6rem; flex-wrap: wrap; margin: 0.8rem 0; }
 .stat .k { color: var(--muted); font-size: 0.8rem; }

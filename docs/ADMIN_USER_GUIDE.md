@@ -631,6 +631,8 @@ foil), the card art gets a **foil effect**: pointer-driven 3D tilt with a
 prismatic sheen and glare (`components/FoilCard.tsx`). The flat digital
 renders can't capture the physical foil treatment — Enchanteds especially
 read washed-out — so this simulates it, same idea as Dreamborn's card view.
+Foil-owned tiles on the Cards grid get a lighter, CSS-only sheen sweep on
+hover (no tilt — hundreds of tiles).
 
 A **Collector grading** panel appears whenever the card has copies in the
 grading pipeline (mig 030): per-copy status (RAW/SUBMITTED/GRADED), grader +

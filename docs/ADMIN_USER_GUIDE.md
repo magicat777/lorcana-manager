@@ -119,7 +119,7 @@ lorcana/
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
-| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`) |
+| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`). Branded v7: logo header panel loads `/brand/lorcana-logo-sm.png` from the web pod, gold/parchment styling, official per-ink colors on the pivoted copies-by-ink panel, Fan Content credit footer panel (keep it). JSON in grafana-gitops-live repo; deploy via `kubectl cp -c grafana` to `/var/lib/grafana/dashboards/shared/` (folder configmaps are NOT mounted). |
 
 **Most common operations, one-liners:**
 
@@ -570,7 +570,8 @@ Logs land in Loki with `ai.odin.loki.app_category: lorcana`.
 ## 9. Web UI user guide
 
 Base URL `http://jason-holt-blade-18-rz09-0484.local:30710`. Nav bar: **Cards · Stats · Decks ·
-Matches · Brief · Upload**.
+Matches · Sim · Brief · Upload**. Every top-level page opens with a hero
+banner from official set key art (see Branding below).
 
 **Install on your phone**: open the site in Safari/Chrome and *Add to Home
 Screen* — it installs as a standalone app (compass-star icon, dark theme). The
@@ -891,7 +892,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows + per-card diff. |
 | `PATCH /imports/{id}` | Set/clear the upload note after the fact. |
 | `POST /imports/{id}/to-pool` | Push the import's added cards (positive diff deltas) into a sealed deck's pool. |
-| `GET /stats`, `GET /stats/sets` | Collection totals / per-set stats. |
+| `GET /stats`, `GET /stats/sets` | Collection totals / per-set stats. Per set: `cards_in_set`/`unique_owned` (master), `base_in_set`/`base_owned` (standard rarities), `base_foil_owned` (foil completion), `playsets`, `total_qty`, `value`. |
 | `GET /stats/snapshots?days=` | Collection snapshots (daily + per-import) with breakdowns — the Stats history charts. |
 | `GET /stats/value-history` | Collection value at each daily price snapshot. |
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |

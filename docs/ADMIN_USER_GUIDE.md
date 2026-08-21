@@ -615,8 +615,10 @@ Browse the full catalog joined with your collection.
 - Rotated (non-Core) cards carry a ⟳ marker on their tile and a red legality
   line on the detail page.
 - **Tiles:** card image, count badges (normal, `✦N` foil, `◈N` allocated to
-  built decks), ink dots, set·number, rarity. Unowned cards are dimmed.
-- Click any card for the detail page.
+  built decks), official ink emblems, set·number, rarity. Unowned cards are
+  dimmed. Foil-owned tiles play a prismatic sheen sweep on hover.
+- Click any card for the detail page (foil-owned and Enchanted cards get the
+  full tilt + sheen foil effect there).
 
 ### 9.2 Card detail (`/cards/{set}/{number}`)
 

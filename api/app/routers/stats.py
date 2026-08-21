@@ -33,6 +33,9 @@ def per_set():
                   count(c.id) FILTER (WHERE c.rarity NOT IN ('Enchanted','Epic','Iconic')) AS base_in_set,
                   count(c.id) FILTER (WHERE c.rarity NOT IN ('Enchanted','Epic','Iconic')
                     AND COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) > 0) AS base_owned,
+                  -- Foil completion: own the foil of each base-set card.
+                  count(c.id) FILTER (WHERE c.rarity NOT IN ('Enchanted','Epic','Iconic')
+                    AND COALESCE(col.qty_foil,0) > 0) AS base_foil_owned,
                   count(c.id) FILTER (WHERE COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) >= 4) AS playsets,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_qty,
                   COALESCE(sum(col.qty_normal * c.price_usd + col.qty_foil * c.price_usd_foil), 0)::numeric(12,2) AS value

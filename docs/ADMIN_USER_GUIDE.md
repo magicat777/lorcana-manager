@@ -653,13 +653,16 @@ estimated value), then the **Collection over time** panel driven by
   note.
 
 Below it: **price movers** tables (owned-card gainers/losers, 30/90-day
-toggle) and a panel per set with three bars: **base-set completion**
+toggle), a hero banner (official article-header art), and a panel per set
+with four bars: **base-set completion**
 (standard rarities — the printed N/204–N/207 range on the cards, the number
 that matches Dreamborn's headline), **master-set completion** (dimmer bar:
 base plus the Enchanted/Epic/Iconic chase printings numbered above the
-printed range), and **playset progress** (4+ copies, base set). Foils are
-not a separate entry — a card and its foil share one catalog row, and
-owning either finish counts as owned. Card detail pages get nightly price
+printed range), **playset progress** (4+ copies, base set), and **foil
+completion** (iridescent bar: own the foil of each base-set card;
+`base_foil_owned` from `/stats/sets`). Foils are not a separate catalog
+entry — a card and its foil share one row, and owning either finish counts
+as owned for base/master; the foil bar tracks the foil finish specifically. Card detail pages get nightly price
 sparklines (normal + foil) once a card has two snapshots.
 
 ### 9.4 Upload (`/upload`)

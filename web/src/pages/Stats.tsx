@@ -264,7 +264,11 @@ export default function Stats() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <h1>Collection stats</h1>
+      <div className="hero">
+        <img src="/brand/article-header.jpg" alt="" />
+        <div className="scrim" />
+        <h1>Collection stats</h1>
+      </div>
       {totals && (
         <div className="statrow">
           <div className="stat"><div className="k">Unique cards</div><div className="v">{totals.unique_owned} / {totals.catalog_cards}</div></div>
@@ -318,6 +322,7 @@ export default function Stats() {
         const basePct = s.base_in_set ? (100 * s.base_owned) / s.base_in_set : 0
         const masterPct = s.cards_in_set ? (100 * s.unique_owned) / s.cards_in_set : 0
         const playsetPct = s.base_in_set ? (100 * s.playsets) / s.base_in_set : 0
+        const foilPct = s.base_in_set ? (100 * s.base_foil_owned) / s.base_in_set : 0
         return (
           <div className="panel" key={s.code}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -325,15 +330,25 @@ export default function Stats() {
               <span className="muted">
                 base {s.base_owned}/{s.base_in_set} ({basePct.toFixed(1)}%) ·
                 master {s.unique_owned}/{s.cards_in_set} ({masterPct.toFixed(1)}%) ·
+                foil {s.base_foil_owned}/{s.base_in_set} ({foilPct.toFixed(1)}%) ·
                 {' '}{s.total_qty} copies · {money(s.value)}
               </span>
             </div>
             <div style={{ margin: '0.5rem 0 0.3rem' }} className="progress"
-              title={`Base set (standard rarities): ${s.base_owned}/${s.base_in_set} — master incl. Enchanted/Epic/Iconic: ${s.unique_owned}/${s.cards_in_set}`}>
+              title={`Base set (standard rarities): ${s.base_owned}/${s.base_in_set}`}>
               <div style={{ width: `${basePct}%` }} />
             </div>
-            <div className="progress playset" title="Playsets (4+ copies, base set)">
+            <div className="progress" style={{ opacity: 0.55, marginBottom: '0.3rem' }}
+              title={`Master set (incl. Enchanted/Epic/Iconic): ${s.unique_owned}/${s.cards_in_set}`}>
+              <div style={{ width: `${masterPct}%` }} />
+            </div>
+            <div className="progress playset" style={{ marginBottom: '0.3rem' }}
+              title="Playsets (4+ copies, base set)">
               <div style={{ width: `${playsetPct}%` }} />
+            </div>
+            <div className="progress foil"
+              title={`Foil completion (own the foil of each base-set card): ${s.base_foil_owned}/${s.base_in_set}`}>
+              <div style={{ width: `${foilPct}%` }} />
             </div>
           </div>
         )

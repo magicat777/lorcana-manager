@@ -303,6 +303,7 @@ export interface SetStats {
   unique_owned: number
   base_in_set: number
   base_owned: number
+  base_foil_owned: number
   playsets: number
   total_qty: number
   value: string | number

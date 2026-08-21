@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { get, send } from '../api'
+import { inkIcon } from '../components/CardGrid'
 import type { Deck, EventDetailData, MatchRow, Venue } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
@@ -274,7 +275,7 @@ export default function EventDetail() {
           {INKS.map((ink) => (
             <button key={ink} className={m.inks.includes(ink) ? 'togglebtn' : 'togglebtn secondary'}
               onClick={() => toggleInk(ink)}>
-              {ink}
+              <img className="inkicon" src={inkIcon(ink)} alt="" />{ink}
             </button>
           ))}
         </p>

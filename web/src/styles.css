@@ -1,11 +1,15 @@
+/* Palette anchored to the official Disney Lorcana swatchbook:
+   Illuminary Gold #C8B772, Parchment #DEC79F, Lorcana Indigo #1D2D96,
+   Kelp #0A0C0C (assets & credit: public/brand/ATTRIBUTION.md). */
 :root {
-  --bg: #0f1220;
-  --bg2: #171b2e;
-  --panel: #1d2238;
-  --border: #2c3352;
+  --bg: #0d1022;
+  --bg2: #161a30;
+  --panel: #1c2138;
+  --border: #2d3560;
   --text: #e6e9f5;
   --muted: #8b93b8;
-  --accent: #c8a24a;
+  --accent: #c8b772;
+  --parchment: #dec79f;
   --accent2: #6ea8fe;
   --danger: #e0607a;
   --ok: #5fbf8a;
@@ -17,19 +21,38 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+/* Evergreen ink-swirl backdrop on a fixed pseudo-element — background-attachment:
+   fixed breaks on iOS Safari, and match logging happens on phones. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(rgba(10, 12, 22, 0.72), rgba(10, 12, 22, 0.88)),
+    url('/brand/evergreen-bg.jpg') center / cover no-repeat var(--bg);
+}
 .app { min-height: 100vh; }
 .topbar {
   display: flex;
   align-items: center;
   gap: 2rem;
-  padding: 0.7rem 1.4rem;
-  background: var(--bg2);
+  padding: 0.5rem 1.4rem;
+  background: rgba(16, 19, 38, 0.86);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 10;
 }
-.brand { font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+.brand { display: flex; align-items: center; gap: 0.7rem; }
+.brand img { height: 46px; display: block; }
+.brand-sub {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 .topbar nav { display: flex; gap: 1.1rem; }
 .topbar a { color: var(--muted); text-decoration: none; padding: 0.25rem 0; }
 .topbar a.active { color: var(--text); border-bottom: 2px solid var(--accent); }
@@ -144,6 +167,25 @@ tr.bad td { color: var(--danger); }
 .ok { color: var(--ok); }
 .deckgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.9rem; }
 .inkdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.inkicon {
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+.togglebtn .inkicon { width: 15px; height: 15px; margin-right: 5px; }
+
+.sitefooter {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 1.2rem 1.4rem 1.6rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+.sitefooter a { color: var(--muted); text-decoration: underline; }
 
 .sheet-fields { display: flex; gap: 2rem; flex-wrap: wrap; }
 
@@ -171,6 +213,7 @@ tr.bad td { color: var(--danger); }
 @media print {
   .topbar, .no-print { display: none !important; }
   body { background: #fff; color: #000; }
+  body::before { display: none; }
   main { padding: 0; max-width: none; }
   .printsheet, .printsheet .muted, .printsheet th, .printsheet td { color: #000; }
   .printsheet .panel { background: #fff; border-color: #999; }

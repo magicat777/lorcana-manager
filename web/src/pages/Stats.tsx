@@ -31,11 +31,12 @@ const DIM_LABEL: Record<Dim, string> = {
   type: 'By card type', cost: 'By ink cost',
 }
 
+// Official ink colors from the Disney Lorcana swatchbook.
 const INK_COLORS: Record<string, string> = {
-  Amber: '#f4b81f', Amethyst: '#8e4f9f', Emerald: '#388c43',
-  Ruby: '#d2082f', Sapphire: '#0089c3', Steel: '#9fa9b3',
+  Amber: '#F6AC05', Amethyst: '#641ECB', Emerald: '#2EC000',
+  Ruby: '#E10037', Sapphire: '#00CBE5', Steel: '#90B4BE',
 }
-const PALETTE = ['#c8a24a', '#3f8ed0', '#e35d8a', '#58b85c', '#8f5cc9',
+const PALETTE = ['#c8b772', '#3f8ed0', '#e35d8a', '#58b85c', '#8f5cc9',
   '#e8a33d', '#4fc3c7', '#b5722f', '#7986cb', '#90a4ae']
 const MAX_LINES = 8
 
@@ -328,12 +329,8 @@ export default function Stats() {
               </span>
             </div>
             <div style={{ margin: '0.5rem 0 0.3rem' }} className="progress"
-              title={`Base set (standard rarities): ${s.base_owned}/${s.base_in_set}`}>
+              title={`Base set (standard rarities): ${s.base_owned}/${s.base_in_set} — master incl. Enchanted/Epic/Iconic: ${s.unique_owned}/${s.cards_in_set}`}>
               <div style={{ width: `${basePct}%` }} />
-            </div>
-            <div className="progress" style={{ opacity: 0.55, marginBottom: '0.3rem' }}
-              title={`Master set (incl. Enchanted/Epic/Iconic): ${s.unique_owned}/${s.cards_in_set}`}>
-              <div style={{ width: `${masterPct}%` }} />
             </div>
             <div className="progress playset" title="Playsets (4+ copies, base set)">
               <div style={{ width: `${playsetPct}%` }} />

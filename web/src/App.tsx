@@ -17,7 +17,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">◈ Lorcana Collection</span>
+        <span className="brand">
+          <img src="/brand/lorcana-logo.png" alt="Disney Lorcana Trading Card Game" />
+          <span className="brand-sub">Collection</span>
+        </span>
         <nav>
           <NavLink to="/" end>Cards</NavLink>
           <NavLink to="/stats">Stats</NavLink>
@@ -45,6 +48,16 @@ export default function App() {
           <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>
+      <footer className="sitefooter no-print">
+        This website uses trademarks and/or copyrights associated with Disney Lorcana TCG, used
+        under Ravensburger&rsquo;s{' '}
+        <a href="https://cdn.ravensburger.com/lorcana/community-code-en" target="_blank" rel="noreferrer">
+          Community Code Policy
+        </a>. We are expressly prohibited from charging you to use or access this content. This
+        website is not published, endorsed, or specifically approved by Disney or Ravensburger.
+        For more information about Disney Lorcana TCG, visit{' '}
+        <a href="https://www.disneylorcana.com/en-US/" target="_blank" rel="noreferrer">disneylorcana.com</a>.
+      </footer>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { get, send } from '../api'
-import { InkDots, INK_COLORS } from '../components/CardGrid'
+import { InkDots, inkIcon } from '../components/CardGrid'
 import type { Card, Deck, DeckCardRow, SearchResult } from '../types'
 
 const INKS = ['Amber', 'Amethyst', 'Emerald', 'Ruby', 'Sapphire', 'Steel']
@@ -51,7 +51,7 @@ function Composition({ cards }: { cards: DeckCardRow[] }) {
           {Object.entries(inkCounts).map(([combo, n]) => (
             <span key={combo} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
               {combo.split('/').map((i) => (
-                <span key={i} className="inkdot" style={{ background: INK_COLORS[i] }} />
+                <img key={i} className="inkicon" src={inkIcon(i)} alt={i} />
               ))}
               {combo} {n}
             </span>

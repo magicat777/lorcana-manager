@@ -2,22 +2,30 @@ import { Link } from 'react-router-dom'
 import RarityIcon from './RarityIcon'
 import type { Card } from '../types'
 
+// Official Disney Lorcana ink colors + emblems (media guide swatchbook;
+// assets in public/brand/ — see that folder's ATTRIBUTION.md).
 export const INK_COLORS: Record<string, string> = {
-  Amber: '#f5b800',
-  Amethyst: '#9a5cb4',
-  Emerald: '#35a047',
-  Ruby: '#d2405a',
-  Sapphire: '#3a7fc2',
-  Steel: '#8a9aa5',
+  Amber: '#F6AC05',
+  Amethyst: '#641ECB',
+  Emerald: '#2EC000',
+  Ruby: '#E10037',
+  Sapphire: '#00CBE5',
+  Steel: '#90B4BE',
 }
+
+export const inkIcon = (ink: string) => `/brand/ink-${ink.toLowerCase()}.png`
 
 export function InkDots({ ink, inks }: { ink: string | null; inks?: string[] | null }) {
   const list = inks?.length ? inks : ink ? [ink] : []
   return (
     <>
-      {list.map((i) => (
-        <span key={i} className="inkdot" style={{ background: INK_COLORS[i] ?? 'transparent' }} />
-      ))}
+      {list.map((i) =>
+        INK_COLORS[i] ? (
+          <img key={i} className="inkicon" src={inkIcon(i)} alt={i} title={i} />
+        ) : (
+          <span key={i} className="inkdot" style={{ background: 'transparent' }} />
+        )
+      )}
     </>
   )
 }

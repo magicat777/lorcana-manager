@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { get } from '../api'
 import { useRef } from 'react'
 import CardGrid from '../components/CardGrid'
+import Hero from '../components/Hero'
 import RarityIcon from '../components/RarityIcon'
 import type { SearchResult, SetInfo } from '../types'
 
@@ -105,6 +106,7 @@ export default function Collection() {
 
   return (
     <div>
+      <Hero img="hero-cards.jpg" title="Cards" pos="center 10%" />
       <div className="filterbar">
         <input
           type="search"

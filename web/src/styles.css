@@ -179,6 +179,12 @@ tr.bad td { color: var(--danger); }
   margin: 0;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
 }
+.hero-right {
+  position: absolute;
+  right: 1.1rem;
+  bottom: 0.85rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+}
 @media (max-width: 640px) {
   .hero img { height: 110px; }
 }

@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get, money, send } from '../api'
@@ -104,7 +105,7 @@ export default function Wantlist() {
   return (
     <div style={{ maxWidth: 980 }}>
       <p><Link to="/decks">← all decks</Link></p>
-      <h1>Want List</h1>
+      <Hero img="hero-wantlist.jpg" title="Want List" />
       {d.wanted_decks.length === 0 ? (
         <p className="muted">
           No decks flagged yet — open a deck and hit <strong>☆ Add to want list</strong>.

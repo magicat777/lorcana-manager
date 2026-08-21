@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -99,10 +100,7 @@ export default function Decks() {
 
   return (
     <div style={{ maxWidth: 1300 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1>Decks</h1>
-        <Link to="/wantlist">Want list →</Link>
-      </div>
+      <Hero img="hero-decks.jpg" title="Decks" right={<Link to="/wantlist">Want list →</Link>} />
       {error && <p className="error">{error}</p>}
       {conflicts.length > 0 && (
         <div className="panel" style={{ borderColor: 'var(--danger)' }}>

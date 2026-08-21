@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get, money } from '../api'
 import Bars from '../components/Bars'
+import Hero from '../components/Hero'
 import TimeSeries from '../components/TimeSeries'
 import type { TsMarker, TsSeries } from '../components/TimeSeries'
 import type { SetStats, SnapshotBucket, SnapshotRow, Totals } from '../types'
@@ -264,11 +265,7 @@ export default function Stats() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <div className="hero">
-        <img src="/brand/article-header.jpg" alt="" />
-        <div className="scrim" />
-        <h1>Collection stats</h1>
-      </div>
+      <Hero img="article-header.jpg" title="Collection stats" />
       {totals && (
         <div className="statrow">
           <div className="stat"><div className="k">Unique cards</div><div className="v">{totals.unique_owned} / {totals.catalog_cards}</div></div>

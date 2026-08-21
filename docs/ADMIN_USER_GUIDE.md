@@ -579,7 +579,12 @@ screens and tables scroll horizontally.
 
 **Branding (2026-08)**: the UI and the Grafana dashboard use official Disney
 Lorcana media from the Ravensburger media guide — logo in the topbar, evergreen
-ink-swirl page backdrop, ink emblem icons instead of colored dots, PWA icons
+ink-swirl page backdrop, per-tab hero banners from set key art
+(`components/Hero.tsx` + `public/brand/hero-*.jpg`: Cards=Moana/TFC,
+Decks=Azurite Sea, Matches=Rise of the Floodborn, Sim=Into the Inklands
+airships, Brief=Shimmering Skies, Upload=Into the Inklands Minnie,
+Wantlist=Whispers in the Well, Stats=generic article header),
+ink emblem icons instead of colored dots, PWA icons
 cut from the logo's compass star, and the official swatchbook palette
 (Illuminary Gold `#C8B772` accent; inks Amber `#F6AC05`, Amethyst `#641ECB`,
 Emerald `#2EC000`, Ruby `#E10037`, Sapphire `#00CBE5`, Steel `#90B4BE`).

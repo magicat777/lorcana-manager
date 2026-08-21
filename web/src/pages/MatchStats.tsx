@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get } from '../api'
@@ -55,7 +56,7 @@ export default function MatchStats() {
   return (
     <div style={{ maxWidth: 900 }}>
       <p><Link to="/matches">← match log</Link></p>
-      <h1>Match Stats</h1>
+      <Hero img="hero-matches.jpg" title="Match Stats" />
       <div className="filterbar">
         <select value={deckId} onChange={(e) => setDeckId(e.target.value)}>
           <option value="">All decks</option>

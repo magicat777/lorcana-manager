@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
@@ -51,10 +52,8 @@ export default function Events() {
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1>Match Log</h1>
-        <Link to="/matches/stats">Win-rate analytics →</Link>
-      </div>
+      <Hero img="hero-matches.jpg" title="Match Log"
+        right={<Link to="/matches/stats">Win-rate analytics →</Link>} />
       <p className="muted">
         Rule 5.2: no notes during a match. Fill this in <strong>between rounds</strong>,
         review it <strong>before pairings</strong> — never at the table.

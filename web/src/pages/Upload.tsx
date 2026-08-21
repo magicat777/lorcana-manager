@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { get, send, uploadWithProgress } from '../api'
 import type { Deck, ImportDiff, ImportHistoryRow, ImportReport } from '../types'
@@ -200,7 +201,7 @@ export default function Upload() {
 
   return (
     <div style={{ maxWidth: 900 }}>
-      <h1>Import collection</h1>
+      <Hero img="hero-upload.jpg" title="Import collection" pos="center 35%" />
       <p className="muted">
         Export from the Dreamborn.ink scanner app as CSV (or .xlsx). Both export shapes work:
         variant rows (Set Number, Card Number, Variant, Count, Name) and two-column counts

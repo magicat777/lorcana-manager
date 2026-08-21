@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { get, money } from '../api'
@@ -35,7 +36,8 @@ export default function Brief() {
 
   return (
     <div style={{ maxWidth: 800 }}>
-      <h1>Daily Brief — {b.today.weekday.charAt(0).toUpperCase() + b.today.weekday.slice(1)} {b.today.date}</h1>
+      <Hero img="hero-brief.jpg"
+        title={`Daily Brief — ${b.today.weekday.charAt(0).toUpperCase() + b.today.weekday.slice(1)} ${b.today.date}`} />
 
       <div className="panel">
         {b.tonight.length > 0 ? (

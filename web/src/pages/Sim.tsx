@@ -1,3 +1,4 @@
+import Hero from '../components/Hero'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { get, send } from '../api'
@@ -99,10 +100,8 @@ export default function Sim() {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h1>Simulations</h1>
-        {deckParam && <Link to="/sim">all decks →</Link>}
-      </div>
+      <Hero img="hero-sim.jpg" title="Simulations"
+        right={deckParam ? <Link to="/sim">all decks →</Link> : undefined} />
       <p className="muted">
         Games are played by the rules engine, not sampled — the deck is run from both seats
         (half on the play, half on the draw) so the win rate isn&apos;t confounded by turn order.

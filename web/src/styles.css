@@ -142,7 +142,9 @@ tr.bad td { color: var(--danger); }
 /* align-items: flex-start — flex default is stretch, which pulled the card
    image to the text column's full height and distorted the art. */
 .detail { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
-.detail img { width: 320px; height: auto; aspect-ratio: 63/88; object-fit: cover; border-radius: 14px; }
+/* > combinator: only the card art — a bare `.detail img` also catches the
+   17px ink emblems rendered inside the text column and inflates them. */
+.detail > img { width: 320px; height: auto; aspect-ratio: 63/88; object-fit: cover; border-radius: 14px; }
 .statrow { display: flex; gap: 1.6rem; flex-wrap: wrap; margin: 0.8rem 0; }
 .stat .k { color: var(--muted); font-size: 0.8rem; }
 .stat .v { font-size: 1.25rem; font-weight: 600; }
@@ -167,10 +169,11 @@ tr.bad td { color: var(--danger); }
 .ok { color: var(--ok); }
 .deckgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.9rem; }
 .inkdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-.inkicon {
+img.inkicon {
   display: inline-block;
   width: 17px;
   height: 17px;
+  aspect-ratio: auto;
   vertical-align: -3px;
   margin-right: 4px;
 }
@@ -199,7 +202,7 @@ tr.bad td { color: var(--danger); }
   .topbar nav { gap: 0.8rem; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   main { padding: 0.8rem 0.8rem 4rem; }
   table { display: block; overflow-x: auto; }
-  .detail img { width: 100%; max-width: 360px; }
+  .detail > img { width: 100%; max-width: 360px; }
   .filterbar input, .filterbar select { flex: 1 1 40%; min-width: 0; }
   .filterbar input[type='search'] { min-width: 0; }
 }

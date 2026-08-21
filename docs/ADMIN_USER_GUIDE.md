@@ -573,9 +573,21 @@ Base URL `http://jason-holt-blade-18-rz09-0484.local:30710`. Nav bar: **Cards ·
 Matches · Brief · Upload**.
 
 **Install on your phone**: open the site in Safari/Chrome and *Add to Home
-Screen* — it installs as a standalone app (gold ◈ icon, dark theme). The UI is
-touch-optimized: the match-log toggles get bigger tap targets on touch screens
-and tables scroll horizontally.
+Screen* — it installs as a standalone app (compass-star icon, dark theme). The
+UI is touch-optimized: the match-log toggles get bigger tap targets on touch
+screens and tables scroll horizontally.
+
+**Branding (2026-08)**: the UI and the Grafana dashboard use official Disney
+Lorcana media from the Ravensburger media guide — logo in the topbar, evergreen
+ink-swirl page backdrop, ink emblem icons instead of colored dots, PWA icons
+cut from the logo's compass star, and the official swatchbook palette
+(Illuminary Gold `#C8B772` accent; inks Amber `#F6AC05`, Amethyst `#641ECB`,
+Emerald `#2EC000`, Ruby `#E10037`, Sapphire `#00CBE5`, Steel `#90B4BE`).
+Assets live in `web/public/brand/` (served at `/brand/…`; the Grafana logo
+panel loads `lorcana-logo-sm.png` from the web pod). Usage falls under
+Ravensburger's Fan Content policy: the required credit line renders in the
+site footer and as a dashboard footer panel — keep both if you restyle.
+Sources, policy link, and full palette: `web/public/brand/ATTRIBUTION.md`.
 
 **Off-network access** runs through a Cloudflare Tunnel (the existing swrpg
 `cloudflared` reaches `lorcana-web.lorcana.svc:80` cross-namespace — nothing

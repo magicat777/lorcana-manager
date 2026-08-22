@@ -15,6 +15,24 @@ export const INK_COLORS: Record<string, string> = {
 
 export const inkIcon = (ink: string) => `/brand/ink-${ink.toLowerCase()}.png`
 
+// Pointer-driven tile tilt (same idea as FoilCard, gentler): CSS vars on the
+// hovered tile drive rotateX/rotateY and the foil sheen position.
+function tiltMove(e: React.PointerEvent<HTMLElement>) {
+  const el = e.currentTarget
+  const r = el.getBoundingClientRect()
+  const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))
+  const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
+  el.style.setProperty('--rx', `${((0.5 - y) * 10).toFixed(2)}deg`)
+  el.style.setProperty('--ry', `${((x - 0.5) * 10).toFixed(2)}deg`)
+  el.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`)
+  el.style.setProperty('--my', `${(y * 100).toFixed(1)}%`)
+}
+function tiltLeave(e: React.PointerEvent<HTMLElement>) {
+  const el = e.currentTarget
+  el.style.setProperty('--rx', '0deg')
+  el.style.setProperty('--ry', '0deg')
+}
+
 export function InkDots({ ink, inks }: { ink: string | null; inks?: string[] | null }) {
   const list = inks?.length ? inks : ink ? [ink] : []
   return (
@@ -41,6 +59,8 @@ export default function CardGrid({ cards }: { cards: Card[] }) {
             to={`/cards/${c.set_code}/${c.collector_number}`}
             className={`cardtile ${owned ? '' : 'unowned'}`}
             title={c.full_name}
+            onPointerMove={tiltMove}
+            onPointerLeave={tiltLeave}
           >
             {c.image_normal ? (
               <img src={c.image_normal} alt={c.full_name} loading="lazy" />

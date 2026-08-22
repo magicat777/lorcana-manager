@@ -616,7 +616,8 @@ Browse the full catalog joined with your collection.
   line on the detail page.
 - **Tiles:** card image, count badges (normal, `✦N` foil, `◈N` allocated to
   built decks), official ink emblems, set·number, rarity. Unowned cards are
-  dimmed. Foil-owned tiles play a prismatic sheen sweep on hover.
+  dimmed. Tiles tilt toward the pointer on hover; foil-owned tiles add a
+  prismatic sheen that follows it.
 - Click any card for the detail page (foil-owned and Enchanted cards get the
   full tilt + sheen foil effect there).
 
@@ -633,8 +634,9 @@ foil), the card art gets a **foil effect**: pointer-driven 3D tilt with a
 prismatic sheen and glare (`components/FoilCard.tsx`). The flat digital
 renders can't capture the physical foil treatment — Enchanteds especially
 read washed-out — so this simulates it, same idea as Dreamborn's card view.
-Foil-owned tiles on the Cards grid get a lighter, CSS-only sheen sweep on
-hover (no tilt — hundreds of tiles).
+On the Cards grid every tile tilts toward the pointer on hover (gentler
+angle), and foil-owned tiles add the pointer-tracked sheen — the glare layer
+stays detail-page-only.
 
 A **Collector grading** panel appears whenever the card has copies in the
 grading pipeline (mig 030): per-copy status (RAW/SUBMITTED/GRADED), grader +

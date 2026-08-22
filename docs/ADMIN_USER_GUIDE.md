@@ -617,7 +617,9 @@ Browse the full catalog joined with your collection.
 - **Tiles:** card image, count badges (normal, `✦N` foil, `◈N` allocated to
   built decks), official ink emblems, set·number, rarity. Unowned cards are
   dimmed. Tiles tilt toward the pointer on hover; foil-owned tiles add a
-  prismatic sheen that follows it.
+  prismatic sheen that follows it. **Ctrl+scroll** (or trackpad pinch) over
+  the grid resizes the tiles (120–420 px min column width, persisted per
+  browser in localStorage `cards.tilemin`).
 - Click any card for the detail page (foil-owned and Enchanted cards get the
   full tilt + sheen foil effect there).
 

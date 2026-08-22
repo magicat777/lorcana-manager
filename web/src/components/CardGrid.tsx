@@ -1,6 +1,12 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import RarityIcon from './RarityIcon'
 import type { Card } from '../types'
+
+// Tile-size zoom bounds for Ctrl+wheel / trackpad pinch (px min column width)
+const TILE_MIN = 120
+const TILE_MAX = 420
+const TILE_DEFAULT = 180
 
 // Official Disney Lorcana ink colors + emblems (media guide swatchbook;
 // assets in public/brand/ — see that folder's ATTRIBUTION.md).
@@ -49,8 +55,32 @@ export function InkDots({ ink, inks }: { ink: string | null; inks?: string[] | n
 }
 
 export default function CardGrid({ cards }: { cards: Card[] }) {
+  // Ctrl+wheel (and trackpad pinch, which browsers deliver as ctrlKey wheel
+  // events) over the grid resizes the tiles instead of zooming the page.
+  const [tileMin, setTileMin] = useState<number>(() => {
+    const v = Number(localStorage.getItem('cards.tilemin'))
+    return v >= TILE_MIN && v <= TILE_MAX ? v : TILE_DEFAULT
+  })
+  const gridRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    localStorage.setItem('cards.tilemin', String(tileMin))
+  }, [tileMin])
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08
+      setTileMin((v) => Math.min(TILE_MAX, Math.max(TILE_MIN, Math.round(v * factor))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   return (
-    <div className="cardgrid">
+    <div className="cardgrid" ref={gridRef} title="Ctrl+scroll (or pinch) to resize cards"
+      style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))` }}>
       {cards.map((c) => {
         const owned = c.qty_normal + c.qty_foil > 0
         return (

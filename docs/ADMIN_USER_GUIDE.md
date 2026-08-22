@@ -865,7 +865,8 @@ be dictated conversationally between rounds.
 
 | Tool | What it does |
 |---|---|
-| `lorcana_search` | Catalog search (name/rules text, set, ink, rarity, owned filter) with stats, price, owned counts per line. |
+| `lorcana_search` | Catalog search (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
+| `lorcana_tags` | All classification tags (Storyborn, Toy, Hunny, …) with catalog counts — the valid `tags` values. |
 | `lorcana_card` | Full single-card detail by set + collector number. |
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |
 | `lorcana_missing` | Want-list: unowned cards in a set with rarity + price. |

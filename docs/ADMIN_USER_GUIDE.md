@@ -119,7 +119,7 @@ lorcana/
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
-| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`). Branded v7: logo header panel loads `/brand/lorcana-logo-sm.png` from the web pod, gold/parchment styling, official per-ink colors on the pivoted copies-by-ink panel, Fan Content credit footer panel (keep it). JSON in grafana-gitops-live repo; deploy via `kubectl cp -c grafana` to `/var/lib/grafana/dashboards/shared/` (folder configmaps are NOT mounted). |
+| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`). Branded v8: logo header panel loads `/brand/lorcana-logo-sm.png` from the web pod, gold/parchment styling, official per-ink colors on the pivoted copies-by-ink panel, gold foils line on the size chart (from `total_foil`, mig 031), stacked per-set value timeseries (today's quantities × `price_history`), Fan Content credit footer panel (keep it). JSON in grafana-gitops-live repo; deploy via `kubectl cp -c grafana` to `/var/lib/grafana/dashboards/shared/` (folder configmaps are NOT mounted). |
 
 **Most common operations, one-liners:**
 
@@ -509,7 +509,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
 | `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers. |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
-| `collection_snapshots` | Daily + per-import collection state (migs 019/020): totals, value, rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts. |
+| `collection_snapshots` | Daily + per-import collection state (migs 019/020/031): totals, value, `total_foil` (mig 031 — NULL before 2026-08-22, history not reconstructable), rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts + Grafana foils line. |
 | `sim_results` / `sim_deck_runs` | Sim engine (migs 012/013/017/021, Lorcana-Sim repo): nightly matchup aggregates / per-deck runs with status, win rates, analysis JSONB. |
 | `engine_coverage` | Which printings the sim engine plays faithfully (mig 018); published by the engine's export tool. |
 | `duels_game_logs` | Full duels.ink game logs (mig 025): raw text + parsed plays/quests/lore/impact/undo_counts per seat, plus **quarantine** (`corpus_excluded`/`exclude_reason`, mig 027) — logs whose own lore bookkeeping is inconsistent (duels.ink tracking bugs) stay stored but are skipped by the replay corpus. FKs SET NULL — deleting events/matches never destroys game data. |

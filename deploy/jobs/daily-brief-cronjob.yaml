@@ -24,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: brief
-              image: localhost:30500/lorcana/api:fastapi-20260821-foil-1
+              image: localhost:30500/lorcana/api:fastapi-20260822-foilsnap-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.daily_brief"]
               envFrom:

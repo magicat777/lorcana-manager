@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { get, money, send } from '../api'
 import { InkDots } from '../components/CardGrid'
 import FoilCard from '../components/FoilCard'
@@ -86,6 +86,12 @@ function AddToWantList({ cardId }: { cardId: string }) {
 
 export default function CardDetail() {
   const { set, number } = useParams()
+  const navigate = useNavigate()
+  // Jump to the Cards grid pre-filtered on one classification tag.
+  const browseTag = (tag: string) => {
+    sessionStorage.setItem('cards.filters', JSON.stringify({ tags: [tag] }))
+    navigate('/')
+  }
   const [card, setCard] = useState<Card | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -138,6 +144,16 @@ export default function CardDetail() {
               </>
             )}
           </p>
+          {(card.classifications?.length ?? 0) > 0 && (
+            <p style={{ margin: '0.2rem 0 0.4rem' }}>
+              {card.classifications!.map((t) => (
+                <button key={t} className="togglebtn small secondary" onClick={() => browseTag(t)}
+                  title={`Browse all ${t} cards`}>
+                  {t}
+                </button>
+              ))}
+            </p>
+          )}
           <p className={card.core_legal ? 'ok' : 'error'} style={{ fontSize: '0.88rem' }}>
             {card.core_legal ? '✔ Core Constructed legal' : '⟳ Not Core Constructed legal (set rotated)'}
           </p>

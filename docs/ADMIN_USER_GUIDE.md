@@ -611,8 +611,12 @@ URL to use it at venues.
 Browse the full catalog joined with your collection.
 
 - **Filters:** free-text search (card name *or* rules text), set, ink, rarity,
-  Owned + missing / Owned only / Missing only, and a **Core-legal only**
-  checkbox. Search is debounced; 60 cards per page with a pager.
+  **tags** (classification multi-select — Storyborn, Toy, Hunny, … from
+  `/cards/tags`; picking several means the card must carry ALL of them),
+  printed lore, Owned + missing / Owned only / Missing only, and a
+  **Core-legal only** checkbox. Search is debounced; 60 cards per page with a
+  pager. Card detail pages show the card's tags as clickable chips that jump
+  back to the grid pre-filtered.
 - Rotated (non-Core) cards carry a ⟳ marker on their tile and a red legality
   line on the detail page.
 - **Tiles:** card image, count badges (normal, `✦N` foil, `◈N` allocated to
@@ -900,7 +904,8 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 |---|---|
 | `GET /health` | `SELECT 1` liveness. |
 | `GET /sets` | Sets + card counts. |
-| `GET /cards` | Paged search: `q, set, ink, rarity, type, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
+| `GET /cards` | Paged search: `q, set, ink, rarity, type, tags` (comma-separated classifications, card must carry all), `lore, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
+| `GET /cards/tags` | All classification tags with card counts (feeds the tag filter). |
 | `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free`. |
 | `PUT /collection/{card_id}` | Set absolute `{qty_normal, qty_foil}`. |
 | `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force, note`. 413 >10 MiB, 409 duplicate merge, 422 bad format. Real imports also snapshot the collection. |

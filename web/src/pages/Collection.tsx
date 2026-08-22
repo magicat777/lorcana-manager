@@ -49,24 +49,84 @@ function RarityFilter({ value, onChange }: { value: string; onChange: (v: string
   )
 }
 
+// Classification tags multi-select (Storyborn, Toy, Hunny, …). Selecting
+// several narrows: the card must carry ALL of them.
+function TagFilter({ all, value, onChange }: {
+  all: { tag: string; cards: number }[]
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  const toggle = (t: string) =>
+    onChange(value.includes(t) ? value.filter((x) => x !== t) : [...value, t])
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="secondary" onClick={() => setOpen(!open)}
+        style={{ fontWeight: 400 }}>
+        {value.length ? value.join(' + ') : 'All tags'} <span className="muted">▾</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30,
+          background: 'var(--panel)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: 4, minWidth: 200, maxHeight: 340,
+          overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+        }}>
+          {value.length > 0 && (
+            <div className="dropdown-opt muted" onClick={() => onChange([])}
+              style={{ padding: '0.35rem 0.6rem', cursor: 'pointer', borderRadius: 6 }}>
+              ✕ Clear tags
+            </div>
+          )}
+          {all.map((t) => (
+            <label key={t.tag} className="dropdown-opt"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '0.3rem 0.6rem',
+                cursor: 'pointer', borderRadius: 6,
+                background: value.includes(t.tag) ? 'var(--bg2)' : undefined,
+              }}>
+              <input type="checkbox" checked={value.includes(t.tag)}
+                onChange={() => toggle(t.tag)} />
+              <span style={{ flex: 1 }}>{t.tag}</span>
+              <span className="muted">{t.cards}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const FILTER_KEY = 'cards.filters'
 
 const loadFilters = () => {
   try {
-    return { q: '', set: '', ink: '', rarity: '', lore: '', owned: 'all', core: false, page: 1,
+    return { q: '', set: '', ink: '', rarity: '', tags: [] as string[], lore: '',
+             owned: 'all', core: false, page: 1,
              ...JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}') }
   } catch {
-    return { q: '', set: '', ink: '', rarity: '', lore: '', owned: 'all', core: false, page: 1 }
+    return { q: '', set: '', ink: '', rarity: '', tags: [] as string[], lore: '',
+             owned: 'all', core: false, page: 1 }
   }
 }
 
 export default function Collection() {
   const saved = loadFilters()
   const [sets, setSets] = useState<SetInfo[]>([])
+  const [allTags, setAllTags] = useState<{ tag: string; cards: number }[]>([])
   const [q, setQ] = useState<string>(saved.q)
   const [set, setSet] = useState<string>(saved.set)
   const [ink, setInk] = useState<string>(saved.ink)
   const [rarity, setRarity] = useState<string>(saved.rarity)
+  const [tags, setTags] = useState<string[]>(saved.tags)
   const [lore, setLore] = useState<string>(saved.lore)
   const [owned, setOwned] = useState<string>(saved.owned)
   const [core, setCore] = useState<boolean>(saved.core)
@@ -76,22 +136,23 @@ export default function Collection() {
 
   useEffect(() => {
     get<SetInfo[]>('/sets').then(setSets).catch((e) => setError(String(e)))
+    get<{ tag: string; cards: number }[]>('/cards/tags').then(setAllTags).catch(() => {})
   }, [])
 
   // Filters survive card-detail visits / browser back until Reset (per tab).
   useEffect(() => {
-    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, lore, owned, core, page }))
-  }, [q, set, ink, rarity, lore, owned, core, page])
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, tags, lore, owned, core, page }))
+  }, [q, set, ink, rarity, tags, lore, owned, core, page])
 
-  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || lore !== '' || owned !== 'all' || core
+  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || tags.length > 0 || lore !== '' || owned !== 'all' || core
   const resetFilters = () => {
     sessionStorage.removeItem(FILTER_KEY)
-    setQ(''); setSet(''); setInk(''); setRarity(''); setLore(''); setOwned('all'); setCore(false); setPage(1)
+    setQ(''); setSet(''); setInk(''); setRarity(''); setTags([]); setLore(''); setOwned('all'); setCore(false); setPage(1)
   }
 
   useEffect(() => {
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q, set, ink, rarity, lore, owned, page, ...(core ? { core: 'true' } : {}) })
+      get<SearchResult>('/cards', { q, set, ink, rarity, tags: tags.join(','), lore, owned, page, ...(core ? { core: 'true' } : {}) })
         .then((d) => {
           setData(d)
           setError('')
@@ -99,7 +160,7 @@ export default function Collection() {
         .catch((e) => setError(String(e)))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, set, ink, rarity, lore, owned, core, page])
+  }, [q, set, ink, rarity, tags, lore, owned, core, page])
 
   const reset = () => setPage(1)
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1
@@ -130,6 +191,7 @@ export default function Collection() {
           {INKS.map((i) => <option key={i}>{i}</option>)}
         </select>
         <RarityFilter value={rarity} onChange={(r) => { setRarity(r); reset() }} />
+        <TagFilter all={allTags} value={tags} onChange={(t) => { setTags(t); reset() }} />
         <select value={lore} onChange={(e) => { setLore(e.target.value); reset() }}
           title="Printed lore value (not effect-granted)">
           <option value="">Any lore</option>

@@ -61,6 +61,7 @@ def search_cards(
     ink: str = "",
     rarity: str = "",
     type: str = "",
+    tags: str = "",
     lore: str = Query("", pattern="^[0-5]?$"),
     owned: str = Query("all", pattern="^(all|owned|missing)$"),
     sim: str = Query("all", pattern="^(all|playable|unplayable)$"),
@@ -85,6 +86,11 @@ def search_cards(
     if type:
         where.append("%s = ANY(c.type)")
         params.append(type)
+    if tags:
+        # Comma-separated classifications; card must carry ALL of them (@>),
+        # so adding tags narrows: Toy + Storyborn = storyborn toys.
+        where.append("c.classifications @> %s")
+        params.append([t.strip() for t in tags.split(",") if t.strip()])
     if lore != "":
         # Printed lore only — effect-granted lore is rules text, not a column.
         where.append("c.lore = %s")
@@ -113,6 +119,16 @@ def search_cards(
         params + [page_size, (page - 1) * page_size],
     )
     return {"total": total, "page": page, "page_size": page_size, "results": rows}
+
+
+@router.get("/cards/tags")
+def list_tags():
+    """All classification tags (Storyborn, Toy, Hunny, …) with card counts —
+    feeds the Cards-tab tag filter dropdown."""
+    return db.query(
+        """SELECT unnest(c.classifications) AS tag, count(*) AS cards
+           FROM cards c GROUP BY 1 ORDER BY 1"""
+    )
 
 
 @router.get("/cards/{set_code}/{number}")

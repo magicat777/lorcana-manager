@@ -393,7 +393,8 @@ schedules are written in PT and are DST-stable. Both CronJobs use
 ### 6.4 CronJob: `lorcana-collection-snapshot` — daily 06:00 PT
 
 Runs `python -m app.jobs.snapshot_collection`: appends one
-`collection_snapshots` row — total copies, unique cards, value, and
+`collection_snapshots` row — total copies, unique cards, foil copies
+(`total_foil`, mig 031), value, and
 rarity/ink/set/type/cost breakdowns (JSONB) — an hour after the price
 refresh, so each day's snapshot values the collection at that morning's
 prices. Idempotent per day. A second snapshot (`source='import'`) is written

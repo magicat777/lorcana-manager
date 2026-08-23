@@ -265,9 +265,27 @@ def get_run(run_id: int):
 
 
 # How long a run may sit in 'running' before its worker is presumed
-# dead. Generous, because a legitimate mcts128 sweep is slow — this is a
-# crash recovery, not a latency budget.
-STALE_CLAIM = "45 minutes"
+# dead. This is CRASH RECOVERY, not a latency budget: reclaiming a run
+# that is still alive restarts it from scratch and throws away
+# everything it has computed, so the window must exceed the slowest
+# legitimate run of its kind.
+#
+# One flat value could not do that. Measured 2026-08-23: heuristic runs
+# 200 games in ~1 minute, while mcts32 took over 71 minutes for 60 —
+# roughly 400x per game, and mcts128 searches 4x wider again. A flat 45
+# minutes was right for heuristic and far too short for search, which
+# put every MCTS run OUTSIDE the safety net this exists to provide: run
+# 84 sat 26 minutes past the window while healthy, and was spared only
+# because the single worker was busy with it and never called claim.
+#
+# Split by policy rather than raised globally, so a genuinely dead
+# heuristic run is still released in minutes.
+#
+# TODO: the real fix is a worker heartbeat (touch claimed_at while
+# alive), which needs no per-policy guess and releases a dead run
+# quickly whatever its cost. These windows are the interim.
+STALE_CLAIM = "45 minutes"  # heuristic, random
+STALE_CLAIM_SEARCH = "12 hours"  # any mcts* policy
 
 
 @router.post("/sim/runs/claim")
@@ -288,8 +306,10 @@ def claim_run(body: ClaimIn):
     # whole claim endpoint down and stalled every worker poll.
     db.execute(
         """UPDATE sim_deck_runs SET status='queued', claimed_at=NULL, worker=NULL
-           WHERE status='running' AND claimed_at < now() - %s::interval""",
-        (STALE_CLAIM,))
+           WHERE status='running'
+             AND claimed_at < now() - (CASE WHEN policy LIKE 'mcts%%'
+                                            THEN %s ELSE %s END)::interval""",
+        (STALE_CLAIM_SEARCH, STALE_CLAIM))
     return db.query_one(
         f"""UPDATE sim_deck_runs SET status='running', claimed_at=now(), worker=%s
             WHERE id = (SELECT id FROM sim_deck_runs WHERE status='queued'

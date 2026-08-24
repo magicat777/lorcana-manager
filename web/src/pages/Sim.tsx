@@ -332,10 +332,22 @@ function Analysis({ run, analysis }: { run: SimRun; analysis: SimAnalysis }) {
         Run #{run.id} breakdown — {run.deck_name ?? `deck ${run.deck_id}`} vs{' '}
         {run.opponent_label ?? run.opponent}
       </h4>
-      <p className="muted">
-        Losses ran {num(s.avg_turns_in_losses)} turns on average vs {num(s.avg_turns_in_wins)} in
-        wins · {s.losses_on_the_play} lost on the play, {s.losses_on_the_draw} on the draw.
-      </p>
+      {/* Guarded: an analysis blob can legitimately arrive PARTIAL — the
+          backfill adds tapes/aggregates to a run that had no analysis at
+          all — and reading shape unguarded here threw a TypeError that
+          unmounted the whole page, so a partial run blanked /sim
+          entirely rather than degrading. */}
+      {s ? (
+        <p className="muted">
+          Losses ran {num(s.avg_turns_in_losses)} turns on average vs {num(s.avg_turns_in_wins)} in
+          wins · {s.losses_on_the_play} lost on the play, {s.losses_on_the_draw} on the draw.
+        </p>
+      ) : (
+        <p className="muted">
+          Win/loss turn shape not recorded for this run — see the{' '}
+          <Link to={`/sim/${run.id}`}>run detail</Link>.
+        </p>
+      )}
       {analysis.note && <p className="muted">{analysis.note}</p>}
       {analysis.error && <p className="error">analysis failed: {analysis.error}</p>}
       {g && (

@@ -392,7 +392,10 @@ export interface SimAggregates {
 }
 
 export interface SimAnalysis {
-  shape: {
+  // Optional: the backfill can add tapes/aggregates to a run that was
+  // queued with analysis off and therefore never had a shape. Marking it
+  // optional makes the compiler demand a guard at every read.
+  shape?: {
     avg_turns_in_losses: number | null
     avg_turns_in_wins: number | null
     losses_on_the_play: number

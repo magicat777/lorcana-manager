@@ -178,6 +178,7 @@ export default function Sim() {
             <th>Avg turns</th>
             <th>Games</th>
             <th>Requested</th>
+            <th>Detail</th>
             <th></th>
           </tr>
         </thead>
@@ -205,6 +206,14 @@ export default function Sim() {
               </td>
               <td className="muted">{when(r.requested_at)}</td>
               <td>
+                <Link
+                  to={`/sim/${r.id}`}
+                  title="Performance detail and the first 10 turns of a representative win and loss"
+                >
+                  View
+                </Link>
+              </td>
+              <td>
                 {r.status === 'complete' && (
                   <button
                     className="secondary"
@@ -220,7 +229,7 @@ export default function Sim() {
           ))}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={11} className="muted">
+              <td colSpan={12} className="muted">
                 No simulations yet.
               </td>
             </tr>

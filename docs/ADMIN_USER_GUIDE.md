@@ -854,6 +854,34 @@ dead-card watch for your last deck, owned-card price movers, and collection
 totals. Identical content to the 8am push (the push includes only NEW news
 items).
 
+### 9.8 Simulation run detail (`/sim/{id}`)
+
+Reached from the **Detail** column on `/sim`. One run's performance and the
+opening of two representative games.
+
+* **Performance** — win rate, record, wins on the play vs the draw, average
+  turns, and (when analysis exists) average turns in wins vs losses and the
+  play/draw split of losses. Engine build and seed base are shown because
+  they decide whether a run can be compared with another at all: different
+  builds ran different rules, and a shared seed base means identical
+  shuffles, which is what makes a paired comparison valid.
+* **Lore curve** — mean lore per turn across the replayed games, wins and
+  losses separately. Where the race is actually decided, as opposed to the
+  final score.
+* **Turning points** — decisions where search preferred a different line by a
+  wide margin, from one representative game. Low-visit decisions are filtered
+  out; a line the search barely explored is noise, not advice.
+* **First 10 turns** — a turn-by-turn tape of one representative win and one
+  representative loss. Representative means *most typical by game length*,
+  not best and worst, so the two are comparable.
+
+If a run was queued with analysis off (faster, records only the score) the
+page says so rather than showing an empty section. Those games are
+reproducible from the seed, so detail can be generated afterwards with the
+backfill — note the backfill replays under the run's ORIGINAL policy in order
+to verify against the recorded score, so backfilling an MCTS run costs about
+as much as re-running it.
+
 ---
 
 ## 10. Claude / MCP tools
@@ -952,4 +980,6 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /duels/replay-corpus` | Real-game corpus for the engine's replay validator (card_map + replayable flag; quarantined logs excluded unless `include_excluded`). |
 | `POST /duels/replay-validations`, `GET /duels/replay-status` | Engine posts per-game verdicts / per-build health + divergences. |
 | `GET /sim/calibration` | Sim vs real win rates per matchup, Wilson CIs, divergence verdicts. |
+| `GET /sim/runs/{id}` | One run with its analysis blob (tapes, aggregates, turning points) — backs the `/sim/{id}` detail page. |
+| `POST /sim/runs/{id}/analysis` | Replace one FINISHED run's analysis only; cannot touch wins/losses/status. The backfill path for runs that predate the tape, or that were queued with analysis off. |
 | `/sim/*` (runs, results, compare, coverage) | Sim-engine pipeline endpoints — see `api/app/routers/sim.py` and the Lorcana-Sim repo. `queue_sim` persists `opponent_policy`/`require_build` (a result is uninterpretable without the opponent pilot); the web Sim page's paired deltas and re-runs carry them too. |

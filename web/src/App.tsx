@@ -12,6 +12,7 @@ import Stats from './pages/Stats'
 import MatchStats from './pages/MatchStats'
 import Wantlist from './pages/Wantlist'
 import Sim from './pages/Sim'
+import SimRun from './pages/SimRun'
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/matches/stats" element={<MatchStats />} />
           <Route path="/matches/:id" element={<EventDetail />} />
           <Route path="/sim" element={<Sim />} />
+          <Route path="/sim/:id" element={<SimRun />} />
           <Route path="/brief" element={<Brief />} />
           <Route path="/stats" element={<Stats />} />
         </Routes>

@@ -444,7 +444,12 @@ retention, and ntfy alert on failure — full detail and restore procedures in
    authored, so flag mechanics to the sim session as soon as spoilers reveal
    them. `lorcana_coverage_priority` ranks which cards to spec first from
    real deck/opponent usage. duels.ink log parsing keeps working immediately
-   (name-based); replay validation and calibration wait on specs.
+   (name-based); replay validation and calibration wait on specs. Note early
+   seeding cannot distort anyone's coverage numbers: the engine reads its own
+   checked-in card snapshots (never this DB; new sets enter it only via a
+   deliberate `snapshot_decks.py --sets N`), and the webui's per-card sim ✓/✗
+   is a join against the engine-published `engine_coverage` manifest — newly
+   seeded unspecced cards just show sim ✗, accurately.
 
 ---
 

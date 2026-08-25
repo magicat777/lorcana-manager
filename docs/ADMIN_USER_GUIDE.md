@@ -412,14 +412,39 @@ retention, and ntfy alert on failure — full detail and restore procedures in
 
 ### 6.6 Runbook: new set release
 
-1. `kubectl -n lorcana delete job lorcana-seed --ignore-not-found && kubectl apply -f deploy/jobs/seed-job.yaml` — pulls the new set + cards.
-2. Check whether the new set should be Core-legal; if the rotation window
-   changed, update `db/migrations/009_core_legal_sets.sql` and run `apply.sh`
-   (see §7.3).
+(next up: set 14 — Hyperia City, October 2026)
+
+1. `kubectl -n lorcana delete job lorcana-seed --ignore-not-found && kubectl apply -f deploy/jobs/seed-job.yaml` — pulls the new set + cards
+   (schema-free: classifications, keywords, images, and the numeric set alias
+   all flow in). Safe to run during spoiler season for a partial catalog and
+   re-run at release — the job is idempotent. Watch for the set to appear on
+   Lorcast first: `curl -s https://api.lorcast.com/v0/sets`.
+2. **Update the Core-legal window — the step that bites if forgotten.**
+   `sets.core_legal` is hardcoded as `set_num BETWEEN 9 AND 13` in
+   `db/migrations/009_core_legal_sets.sql`; until edited, every new-set card
+   shows "⟳ Not Core legal" and deck validation flags it. Edit the range *in
+   the migration itself* (migrations re-run on every `apply.sh`, so a manual
+   `UPDATE` gets reverted), apply any announced rotation to the lower bound,
+   then run `apply.sh` (§7.3).
 3. If Dreamborn labels the new set unusually and imports report
    `unknown set '...'`, add an alias (§7.4).
 4. Prices for the new cards appear after the next nightly price refresh (or run
    it manually, §2).
+5. **Nothing else needs touching**: webui (set dropdown, four-bar completion
+   panels, tag filter, deck building), Grafana (completion table sorts
+   `set_num DESC`; per-set value timeseries), and all MCP tools are
+   data-driven and pick the set up from the seed.
+6. Optional polish: pull the new set's Article Header / Background art from
+   the Ravensburger media guide (Set Assets section — Hyperia City is
+   "coming soon" until near release) into `web/public/brand/` for a
+   hero-banner refresh; record it in `ATTRIBUTION.md`.
+7. **Sim engine (the sim session's side, the long pole)**: every playable new
+   card needs an engine spec — the sim refuses decks holding unspecced cards.
+   Any NEW keyword/mechanic needs engine support before its specs can be
+   authored, so flag mechanics to the sim session as soon as spoilers reveal
+   them. `lorcana_coverage_priority` ranks which cards to spec first from
+   real deck/opponent usage. duels.ink log parsing keeps working immediately
+   (name-based); replay validation and calibration wait on specs.
 
 ---
 

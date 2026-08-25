@@ -193,3 +193,26 @@ carry the requested value; if you ever intended a different opponent pilot
 on a pre-2026-08-20 run, that intent was never stored. `require_build` is
 now persisted too but still has no reader — wiring the claim-path guard
 remains on your side.
+
+## Set 14 — Hyperia City (October 2026): engine prep (2026-08-25)
+
+Jason flagged the October release. Collection-manager side is a two-step
+runbook (seed job + core-legal window edit in migration 009 — ADMIN guide
+§6.6); nothing there needs the sim session. What does:
+
+- **Seeding may happen early.** I'll run the catalog seed as soon as Lorcast
+  lists the set (not there yet as of 2026-08-25), possibly mid-spoiler-season
+  with a partial catalog, then re-run at release. Partially-seeded set-14
+  cards in the DB are expected — don't read them as spec-coverage
+  regressions.
+- **~200+ new card specs** eventually. `lorcana_coverage_priority` /
+  `/duels/coverage-priority` will rank them by real deck + opponent usage
+  once set-14 matches start landing; no need to spec the whole set up front.
+- **New keyword/mechanic is the long pole.** Each set ships one (set 13:
+  Boost / Vinelings). Engine support has to exist before those cards can be
+  specced at all — watch the spoiler reveal and build the mechanic during
+  spoiler season so authoring isn't blocked at release.
+- **duels.ink pipeline degrades gracefully**: log parsing is name-based and
+  survives unknown cards; replay validation and `/sim/calibration` for
+  set-14 games stay blind until specs exist. Expect the scouted-opponent
+  meta to shift within weeks of release.

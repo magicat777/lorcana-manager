@@ -200,11 +200,14 @@ Jason flagged the October release. Collection-manager side is a two-step
 runbook (seed job + core-legal window edit in migration 009 — ADMIN guide
 §6.6); nothing there needs the sim session. What does:
 
-- **Seeding may happen early.** I'll run the catalog seed as soon as Lorcast
-  lists the set (not there yet as of 2026-08-25), possibly mid-spoiler-season
-  with a partial catalog, then re-run at release. Partially-seeded set-14
-  cards in the DB are expected — don't read them as spec-coverage
-  regressions.
+- **Seeding may happen early — and it's a non-event for engine coverage**
+  (confirmed with the sim session 2026-08-25): the engine never reads the
+  ODIN DB; carddata.py globs its checked-in data/cards/set9..13.json
+  snapshots, so set 14 enters the engine only via a deliberate
+  `tools/snapshot_decks.py --sets 14`. On the webui side, per-card sim ✓/✗
+  joins the engine-published `engine_coverage` manifest, so newly seeded
+  set-14 cards simply (and accurately) show sim ✗ — there's no catalog-wide
+  percentage on either side that spoiler seeding can distort.
 - **~200+ new card specs** eventually. `lorcana_coverage_priority` /
   `/duels/coverage-priority` will rank them by real deck + opponent usage
   once set-14 matches start landing; no need to spec the whole set up front.

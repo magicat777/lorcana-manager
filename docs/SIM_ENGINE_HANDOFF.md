@@ -219,3 +219,30 @@ runbook (seed job + core-legal window edit in migration 009 — ADMIN guide
   survives unknown cards; replay validation and `/sim/calibration` for
   set-14 games stay blind until specs exist. Expect the scouted-opponent
   meta to shift within weeks of release.
+
+## Match-data re-parent + duels importer fix (2026-08-26)
+
+If you consumed match/calibration data before 2026-08-26, re-pull: an MCP
+import bug had filed six Hunny Rainbow practice games under event #17 (A/E
+Elinor, 8/19), so deck-scoped numbers were poisoned in both directions —
+Elinor showed 5-1 instead of 0-1 on that event, and Hunny's practice games
+were invisible to cut-list/MVP/`/sim/calibration` queries.
+
+Fixed by re-parenting, not re-importing (no duplicate rows, no log churn):
+
+- Matches 47/48/50 → new event **#23** (8/19, Hunny, 3-0); match 57 → **#24**
+  (8/25, 1-0); match 58 → **#25** (8/26, 1-0 — first human opponent).
+- Event #17 reverted to pure Elinor 0-1.
+- `duels_game_logs` rows 11/12/14/15/16 kept their `match_id` FKs and had
+  `event_id` updated to follow; log 10 (the Elinor game) untouched. Corpus
+  membership and quarantine flags unchanged — replay-validation inputs are
+  the same logs, now under the right deck.
+- Post-fix truth: Hunny Rainbow 6-0 overall (5 duels + 1 sanctioned),
+  Elinor 3-1.
+
+Root cause fixed in `lorcana_import_duels_log`
+(odin-mcp http-20260826-eventfix-1): event reuse now keys on
+(date, venue, **deck**) — a same-day duels event for a different deck is
+never reused, and the tool's response notes when it created a separate
+event for that reason. If your side ever auto-files matches, same rule
+applies.

@@ -584,6 +584,7 @@ The importer resolves a file's set label via `set_aliases` first, then numeric
 | Upload rejected 413 | File over 10 MiB (nginx and API both cap). Split the export. |
 | Upload 409 "already merged" | Duplicate-file guard on **merge** mode (same sha256 as a previous non-dry-run import). Use the "Merge anyway" button (force) or Replace mode, which is idempotent and never blocked. |
 | Rows unmatched: `unknown set '…'` | Add a set alias (§7.4). |
+| Match filed under the wrong event (wrong deck's banner, deck-scoped stats poisoned both ways) | Re-parent in the DB, don't re-import (no duplicates, stored duels logs keep their FKs). In one transaction: INSERT the correct event(s) (clone date/store/format/event_type/venue_id, right `deck_id`); UPDATE the `matches` rows' `event_id` + renumber `round`; UPDATE `duels_game_logs.event_id` to follow `match_id`. Worked example in git: events #23–25, 2026-08-26 (six Hunny games mis-filed under Elinor event #17). The importer now keys same-day duels event reuse on (date, venue, deck), so recurrence needs an explicit wrong `event_id`. |
 | Rows unmatched: `ambiguous name` | The set-scoped name fallback found duplicates; fix the row's card number in the CSV (matching never guesses). |
 | Migrate job failed on apply.sh | Script prints the last 50 psql lines. Fix the SQL (must be idempotent), re-run `apply.sh`. |
 | New set missing from UI | Seed job hasn't run — §3.4. |

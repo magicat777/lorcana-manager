@@ -246,3 +246,24 @@ Root cause fixed in `lorcana_import_duels_log`
 never reused, and the tool's response notes when it created a separate
 event for that reason. If your side ever auto-files matches, same rule
 applies.
+
+## Third log dialect: logged-in PvP, second person (2026-08-27)
+
+Jason's first ranked PvP export (logged in, not spectating) arrived in
+second person — "You played…", "Opponent's turn begins" — and the importer
+refused it cleanly ("parsed no card plays"). Fixed in odin-mcp
+http-20260827-pvpdialect-1: the normalizer translates You→Player 1 /
+Opponent→Player 2 before parsing (line-start anchored, so card names like
+"You've Got a Friend in Me" are never rewritten), and the dialect's
+"You took back their action" line becomes an undo marker.
+
+**Replay-validation implication for your side**: unlike spectator/bot
+logs, player-perspective PvP logs REDACT the opponent's hidden
+information — "Opponent drew a card" with no name, unnamed mulligans.
+So the 2026-08-19 scope correction ("logs contain both hands") holds for
+the spectator dialect only. Corpus entries originating from this dialect
+support the arithmetic tier and action-legality checks on named plays,
+but NOT full-state replay of the opponent's seat. If you build the
+full-state tier, gate it per-log: a `parsed` blob whose opponent-side
+plays exist but draws are absent is a player-perspective log. My-seat
+information remains complete either way.

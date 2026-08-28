@@ -411,13 +411,27 @@ def get_coverage():
 
 
 @router.get("/sim/calibration")
-def calibration():
+def calibration(engine_build: str = ""):
     """Sim-vs-reality per matchup: my deck × opponent ink pair, real match
     record (match log, paper + online) beside simulated win rate
     (sim_deck_runs vs decks of that ink pair), both as Wilson 95% CIs.
     Non-overlapping intervals = the engine's model of that matchup disagrees
     with real play — a policy/spec gap worth investigating. Baseline
-    opponents (deck2/deck3) have no ink identity and are excluded."""
+    opponents (deck2/deck3) have no ink identity and are excluded.
+
+    ONE ENGINE BUILD ONLY. This used to pool every complete run ever
+    recorded — 89 runs across 15 builds as of 2026-08-28 — which made a
+    DIVERGES verdict unreadable: the gap could be a real spec gap, or
+    just old builds dragging the average. Those older builds were not
+    merely different, they were WRONG in ways since fixed (Boost dead on
+    31 cards, Alert on 9, ready restrictions never read), so averaging
+    them in measures the engine's history rather than the engine.
+
+    Defaults to the build of the most recent complete run; pass
+    engine_build to pin an older one. The number of runs left out is
+    reported rather than silently dropped — the same treatment baseline
+    opponents already get.
+    """
     from .matchlog import LOSS_RESULTS, WIN_RESULTS
 
     def pair_key(inks) -> str:
@@ -443,10 +457,27 @@ def calibration():
         elif r["result"] in LOSS_RESULTS:
             g["real_losses"] += 1
 
-    runs = db.query(
-        """SELECT r.deck_id, d.name AS deck_name, r.opponent, r.wins, r.losses
+    # Which build to calibrate against: the caller's, else the newest
+    # one that actually produced a result.
+    build = engine_build
+    if not build:
+        newest = db.query_one(
+            """SELECT engine_build FROM sim_deck_runs
+               WHERE status = 'complete' AND wins IS NOT NULL
+                 AND engine_build IS NOT NULL AND engine_build != ''
+               ORDER BY id DESC LIMIT 1""")
+        build = (newest or {}).get("engine_build") or ""
+
+    all_complete = db.query(
+        """SELECT r.deck_id, d.name AS deck_name, r.opponent, r.wins, r.losses,
+                  r.engine_build
            FROM sim_deck_runs r JOIN decks d ON d.id = r.deck_id
            WHERE r.status = 'complete' AND r.wins IS NOT NULL""")
+    if build:
+        runs = [r for r in all_complete if r["engine_build"] == build]
+    else:  # nothing is stamped — calibrate on everything rather than nothing
+        runs = all_complete
+    stale = len(all_complete) - len(runs)
     opp_ids = sorted({int(r["opponent"]) for r in runs if r["opponent"].isdigit()})
     inks_of: dict[int, str] = {}
     if opp_ids:
@@ -492,4 +523,9 @@ def calibration():
             g["verdict"] = "consistent" if lo <= hi else "DIVERGES"
         rows.append(g)
     rows.sort(key=lambda g: (g["verdict"] != "DIVERGES", g["deck_name"], g["opp_inks"]))
-    return {"matchups": rows, "baseline_runs_excluded": baselines}
+    return {
+        "matchups": rows,
+        "baseline_runs_excluded": baselines,
+        "engine_build": build,
+        "other_build_runs_excluded": stale,
+    }

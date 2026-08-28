@@ -24,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: news-fetch
-              image: localhost:30500/lorcana/api:fastapi-20260823-simsess-1
+              image: localhost:30500/lorcana/api:fastapi-20260828-setvalue-1
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.fetch_news"]
               envFrom:

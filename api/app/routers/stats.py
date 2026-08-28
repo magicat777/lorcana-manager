@@ -38,7 +38,10 @@ def per_set():
                     AND COALESCE(col.qty_foil,0) > 0) AS base_foil_owned,
                   count(c.id) FILTER (WHERE COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) >= 4) AS playsets,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_qty,
-                  COALESCE(sum(col.qty_normal * c.price_usd + col.qty_foil * c.price_usd_foil), 0)::numeric(12,2) AS value
+                  -- COALESCE each price, not the sum: qty * NULL nulls the whole
+                  -- row (dropped foil-only Enchanteds — set 13 showed $242 real $925)
+                  COALESCE(sum(col.qty_normal * COALESCE(c.price_usd, 0)
+                    + col.qty_foil * COALESCE(c.price_usd_foil, 0)), 0)::numeric(12,2) AS value
            FROM sets s
            JOIN cards c ON c.set_id = s.id
            LEFT JOIN collection col ON col.card_id = c.id

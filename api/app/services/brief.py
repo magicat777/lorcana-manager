@@ -115,7 +115,10 @@ def build_brief() -> dict:
     totals = db.query_one(
         """SELECT count(*) FILTER (WHERE col.qty_normal + col.qty_foil > 0) AS unique_owned,
                   COALESCE(sum(col.qty_normal + col.qty_foil), 0) AS total_copies,
-                  COALESCE(sum(col.qty_normal * c.price_usd + col.qty_foil * c.price_usd_foil), 0)
+                  -- per-price COALESCE: qty * NULL nulls the row and silently
+                  -- drops foil-only Enchanteds from the total
+                  COALESCE(sum(col.qty_normal * COALESCE(c.price_usd, 0)
+                    + col.qty_foil * COALESCE(c.price_usd_foil, 0)), 0)
                     ::numeric(12,2) AS value
            FROM collection col JOIN cards c ON c.id = col.card_id""")
 

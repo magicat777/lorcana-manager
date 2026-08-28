@@ -13,6 +13,10 @@ const pct = (v: string | number | null) => (v == null ? '—' : `${(Number(v) * 
 const num = (v: string | number | null, d = 1) => (v == null ? '—' : Number(v).toFixed(d))
 const when = (s: string | null) => (s ? new Date(s).toLocaleString() : '—')
 
+/** Drop the "engine-" prefix — the date and session are what identify a
+ *  build at a glance, and the column has to stay narrow. */
+const shortBuild = (b: string) => b.replace(/^engine-/, '')
+
 export default function Sim() {
   const [params, setParams] = useSearchParams()
   const deckParam = params.get('deck')
@@ -26,6 +30,15 @@ export default function Sim() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const timer = useRef<number | undefined>(undefined)
+
+  // The newest build that produced a result. Runs on any OTHER build are
+  // not comparable with it — the rules code differs — which is why
+  // lorcana_sim_compare refuses a cross-build delta and why /sim/calibration
+  // now scopes to one build. Derived from the runs themselves rather than
+  // fetched, so the table needs no extra request and cannot disagree with
+  // what it is displaying.
+  const currentBuild =
+    runs.find((r) => r.status === 'complete' && r.engine_build)?.engine_build ?? null
 
   const load = useCallback(() => {
     const q = deckParam ? { deck_id: Number(deckParam) } : undefined
@@ -177,6 +190,7 @@ export default function Sim() {
             <th>On play / draw</th>
             <th>Avg turns</th>
             <th>Games</th>
+            <th>Engine build</th>
             <th>Requested</th>
             <th>Detail</th>
             <th></th>
@@ -204,6 +218,29 @@ export default function Sim() {
               <td className="muted">
                 {r.games} · {r.policy}
               </td>
+              <td
+                className="muted"
+                style={{ whiteSpace: 'nowrap' }}
+                title={
+                  r.engine_build && r.engine_build === currentBuild
+                    ? 'Current engine — comparable with other runs on this build'
+                    : 'An OLDER engine. Rules code differs, so this run is not comparable ' +
+                      'with current ones; lorcana_sim_compare refuses a cross-build delta.'
+                }
+              >
+                {r.engine_build ? (
+                  <>
+                    {r.engine_build === currentBuild ? null : (
+                      <span aria-hidden="true" style={{ marginRight: 4 }}>
+                        ⚠
+                      </span>
+                    )}
+                    {shortBuild(r.engine_build)}
+                  </>
+                ) : (
+                  '—'
+                )}
+              </td>
               <td className="muted">{when(r.requested_at)}</td>
               <td>
                 <Link
@@ -229,7 +266,7 @@ export default function Sim() {
           ))}
           {runs.length === 0 && (
             <tr>
-              <td colSpan={12} className="muted">
+              <td colSpan={13} className="muted">
                 No simulations yet.
               </td>
             </tr>

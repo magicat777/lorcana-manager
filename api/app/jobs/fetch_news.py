@@ -15,6 +15,7 @@ import html as htmllib
 import re
 import time
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -66,8 +67,65 @@ def parse_disneylorcana(page: str) -> list[dict]:
     return items
 
 
+# ComicBook.com's WordPress tag feed (RSS 2.0). The tag already scopes to
+# Lorcana, but title/categories are guarded anyway in case the URL is ever
+# pointed at a broader category. Parsed with regexes like everything else
+# here — the feed is machine-generated XML, stable enough for that.
+_RSS_ITEM = re.compile(r"<item>(.*?)</item>", re.S)
+_RSS_CATEGORY = re.compile(r"<category><!\[CDATA\[(.*?)\]\]></category>")
+_CDATA = re.compile(r"^<!\[CDATA\[(.*)\]\]>$", re.S)
+
+
+def _rss_field(block: str, tag: str) -> str | None:
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", block, re.S)
+    if not m:
+        return None
+    v = m.group(1).strip()
+    cd = _CDATA.match(v)
+    if cd:
+        v = cd.group(1)
+    return htmllib.unescape(v).strip() or None
+
+
+def parse_comicbook(feed: str) -> list[dict]:
+    items, seen = [], set()
+    for m in _RSS_ITEM.finditer(feed):
+        b = m.group(1)
+        title, link = _rss_field(b, "title"), _rss_field(b, "link")
+        if not title or not link:
+            continue
+        # Canonical URL is the dedup identity: strip query strings
+        # ("?share=..." etc.) so refetches upsert instead of duplicating.
+        url = link.split("?", 1)[0]
+        if url in seen:
+            continue
+        cats = [htmllib.unescape(c).strip() for c in _RSS_CATEGORY.findall(b)]
+        if "lorcana" not in " ".join([title] + cats).lower():
+            continue
+        seen.add(url)
+        published = None
+        pd = _rss_field(b, "pubDate")
+        if pd:
+            try:
+                published = parsedate_to_datetime(pd).date()
+            except (TypeError, ValueError):
+                pass
+        desc = _rss_field(b, "description") or ""
+        desc = re.sub(r"<[^>]+>", " ", desc)
+        desc = re.sub(r"\s+", " ", htmllib.unescape(desc)).strip()[:400] or None
+        items.append({
+            # category is the user-visible label on the brief; source is the
+            # DB identifier (matches the 'disneylorcana'/'lorcast' style).
+            "source": "comicbook", "url": url, "title": title,
+            "category": "ComicBook.com", "summary": desc,
+            "image_url": None, "published_at": published,
+        })
+    return items
+
+
 SOURCES = [
     ("disneylorcana", "https://www.disneylorcana.com/en-US/news", parse_disneylorcana),
+    ("comicbook", "https://comicbook.com/tag/disney-lorcana/feed/", parse_comicbook),
 ]
 
 

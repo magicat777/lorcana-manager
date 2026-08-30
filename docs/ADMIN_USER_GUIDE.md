@@ -348,12 +348,18 @@ sparklines on card detail (`price_history` in the card payload).
 ### 6.2 CronJob: `lorcana-news-fetch` — daily 07:30 PT
 
 Runs `python -m app.jobs.fetch_news`, half an hour before the brief so fresh
-items land in the morning push. Scrapes the official
+items land in the morning push. Two sources (regex-parsed, no headless
+browser): the official
 [disneylorcana.com news page](https://www.disneylorcana.com/en-US/news)
-(Ravensburger; server-rendered Nuxt markup, parsed with regexes — no headless
-browser) and upserts into `news_items`: title, category (News / Gameplay /
-Events / Strategy…), summary, image, published date. The URL is the identity;
-refetches update text in place, `first_seen_at` is set once.
+(Ravensburger; server-rendered Nuxt markup) and ComicBook.com's
+[Disney Lorcana tag feed](https://comicbook.com/tag/disney-lorcana/feed/)
+(WordPress RSS, added 2026-08-30; canonical URL with query strings stripped
+is the dedup key, items are guarded to Lorcana mentions, category shows as
+"ComicBook.com" on the brief). Upserts into `news_items`: title, category
+(News / Gameplay / … or the outlet name), summary, image, published date.
+The URL is the identity; refetches update text in place, `first_seen_at` is
+set once. Parser tests (fixture-based, no network):
+`kubectl -n lorcana exec deploy/lorcana-api -- python -m app.tests.test_fetch_news`.
 
 - The brief JSON carries the latest 8 items with an `is_new` flag
   (`first_seen_at` within 36 h); the **text push and MCP brief list only new

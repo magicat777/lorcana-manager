@@ -728,9 +728,10 @@ completion** (iridescent bar: own the foil of each base-set card;
 entry — a card and its foil share one row, and owning either finish counts
 as owned for base/master; the foil bar tracks the foil finish specifically. Card detail pages get nightly price
 sparklines (normal + foil) once a card has two snapshots — plus one line per
-same-set **Enchanted/Epic printing** of the card (`premium_printings` on the
-detail endpoint), each linking to that printing's own page, so the chase
-variants' prices are visible from any print of the card.
+price series of every other **same-set printing** of the card
+(`sibling_printings` on the detail endpoint): a standard print shows its
+Enchanted/Epic variants, a chase print shows the standard one, each row
+linking to that printing's own page.
 
 ### 9.4 Upload (`/upload`)
 
@@ -977,7 +978,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /sets` | Sets + card counts. |
 | `GET /cards` | Paged search: `q, set, ink, rarity, type, tags` (comma-separated classifications, card must carry all), `lore, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
 | `GET /cards/tags` | All classification tags with card counts (feeds the tag filter). |
-| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free` + `price_history` (nightly) + `premium_printings` (same-set Enchanted/Epic printings of the card, each with its own nightly price history — extend the rarity filter there if an Iconic/Illustrious ever joins the collection). |
+| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free` + `price_history` (nightly) + `sibling_printings` (every other same-set printing of the card — chase variants from a standard print, the standard print from a chase card — each with its own nightly price history). |
 | `PUT /collection/{card_id}` | Set absolute `{qty_normal, qty_foil}`. |
 | `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force, note`. 413 >10 MiB, 409 duplicate merge, 422 bad format. Real imports also snapshot the collection. |
 | `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows + per-card diff. |

@@ -168,16 +168,13 @@ export default function CardDetail() {
           {(() => {
             const hist = (card.price_history ?? []).filter((h) => h.usd != null)
             const foil = (card.price_history ?? []).filter((h) => h.usd_foil != null)
-            // Chase printings (Enchanted/Epic) are foil-only; chart whichever
-            // price series each one actually has.
-            const premiums = (card.premium_printings ?? [])
-              .map((p) => {
-                const rows = p.price_history.filter((h) => h.usd_foil != null)
-                const key: 'usd' | 'usd_foil' = rows.length >= 2 ? 'usd_foil' : 'usd'
-                return { ...p, rows: key === 'usd_foil' ? rows
-                  : p.price_history.filter((h) => h.usd != null), key }
-              })
-              .filter((p) => p.rows.length >= 2)
+            // One row per sibling printing per price series it actually has
+            // (chase prints are foil-only; a standard sibling gets both).
+            const premiums = (card.sibling_printings ?? []).flatMap((p) =>
+              (['usd', 'usd_foil'] as const).flatMap((key) => {
+                const rows = p.price_history.filter((h) => h[key] != null)
+                return rows.length >= 2 ? [{ ...p, rows, key }] : []
+              }))
             if (hist.length < 2 && foil.length < 2 && premiums.length === 0) return null
             const pts = (rows: typeof hist, key: 'usd' | 'usd_foil') =>
               rows.map((h) => ({ t: h.captured_at.slice(0, 10), v: Number(h[key]) }))
@@ -200,15 +197,15 @@ export default function CardDetail() {
                   </p>
                 )}
                 {premiums.map((p) => (
-                  <p key={p.card_id} style={{ margin: '0.3rem 0' }}>
+                  <p key={`${p.card_id}-${p.key}`} style={{ margin: '0.3rem 0' }}>
                     <span style={{ display: 'inline-block', width: 110 }}>
                       <Link to={`/cards/${card.set_code}/${p.collector_number}`}
                         title={`${p.rarity} printing #${p.collector_number}`}>
-                        {p.rarity} ✦
+                        {p.rarity}{p.key === 'usd_foil' ? ' ✦' : ''}
                       </Link>
                     </span>
                     <Sparkline points={pts(p.rows, p.key)} showRange
-                      stroke={PREMIUM_STROKE[p.rarity] ?? '#c9a7f0'} />
+                      stroke={PREMIUM_STROKE[p.rarity] ?? '#90b4be'} />
                   </p>
                 ))}
               </div>

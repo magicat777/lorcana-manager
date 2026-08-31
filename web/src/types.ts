@@ -35,7 +35,7 @@ export interface Card {
   illustrators?: string[]
   released_at?: string
   price_history?: { captured_at: string; usd: string | number | null; usd_foil: string | number | null }[]
-  premium_printings?: {
+  sibling_printings?: {
     card_id: string
     collector_number: string
     rarity: string

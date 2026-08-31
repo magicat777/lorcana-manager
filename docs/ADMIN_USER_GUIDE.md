@@ -977,7 +977,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /sets` | Sets + card counts. |
 | `GET /cards` | Paged search: `q, set, ink, rarity, type, tags` (comma-separated classifications, card must carry all), `lore, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
 | `GET /cards/tags` | All classification tags with card counts (feeds the tag filter). |
-| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free`. |
+| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free` + `price_history` (nightly) + `premium_printings` (same-set Enchanted/Epic printings of the card, each with its own nightly price history — extend the rarity filter there if an Iconic/Illustrious ever joins the collection). |
 | `PUT /collection/{card_id}` | Set absolute `{qty_normal, qty_foil}`. |
 | `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force, note`. 413 >10 MiB, 409 duplicate merge, 422 bad format. Real imports also snapshot the collection. |
 | `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows + per-card diff. |

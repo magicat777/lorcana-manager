@@ -168,24 +168,49 @@ export default function CardDetail() {
           {(() => {
             const hist = (card.price_history ?? []).filter((h) => h.usd != null)
             const foil = (card.price_history ?? []).filter((h) => h.usd_foil != null)
-            if (hist.length < 2 && foil.length < 2) return null
+            // Chase printings (Enchanted/Epic) are foil-only; chart whichever
+            // price series each one actually has.
+            const premiums = (card.premium_printings ?? [])
+              .map((p) => {
+                const rows = p.price_history.filter((h) => h.usd_foil != null)
+                const key: 'usd' | 'usd_foil' = rows.length >= 2 ? 'usd_foil' : 'usd'
+                return { ...p, rows: key === 'usd_foil' ? rows
+                  : p.price_history.filter((h) => h.usd != null), key }
+              })
+              .filter((p) => p.rows.length >= 2)
+            if (hist.length < 2 && foil.length < 2 && premiums.length === 0) return null
             const pts = (rows: typeof hist, key: 'usd' | 'usd_foil') =>
               rows.map((h) => ({ t: h.captured_at.slice(0, 10), v: Number(h[key]) }))
+            const PREMIUM_STROKE: Record<string, string> = {
+              Enchanted: '#c9a7f0', Epic: '#7fd0e8',
+            }
             return (
               <div className="panel">
                 <h3 style={{ marginTop: 0 }}>Price history <span className="muted">(nightly)</span></h3>
                 {hist.length >= 2 && (
                   <p style={{ margin: '0.3rem 0' }}>
-                    <span className="muted" style={{ display: 'inline-block', width: 60 }}>Price</span>
+                    <span className="muted" style={{ display: 'inline-block', width: 110 }}>Price</span>
                     <Sparkline points={pts(hist, 'usd')} showRange />
                   </p>
                 )}
                 {foil.length >= 2 && (
                   <p style={{ margin: '0.3rem 0' }}>
-                    <span className="muted" style={{ display: 'inline-block', width: 60 }}>Foil ✦</span>
+                    <span className="muted" style={{ display: 'inline-block', width: 110 }}>Foil ✦</span>
                     <Sparkline points={pts(foil, 'usd_foil')} showRange />
                   </p>
                 )}
+                {premiums.map((p) => (
+                  <p key={p.card_id} style={{ margin: '0.3rem 0' }}>
+                    <span style={{ display: 'inline-block', width: 110 }}>
+                      <Link to={`/cards/${card.set_code}/${p.collector_number}`}
+                        title={`${p.rarity} printing #${p.collector_number}`}>
+                        {p.rarity} ✦
+                      </Link>
+                    </span>
+                    <Sparkline points={pts(p.rows, p.key)} showRange
+                      stroke={PREMIUM_STROKE[p.rarity] ?? '#c9a7f0'} />
+                  </p>
+                ))}
               </div>
             )
           })()}

@@ -160,6 +160,24 @@ def card_detail(set_code: str, number: str):
            WHERE card_id = %s ORDER BY captured_at""",
         (row["id"],),
     )
+    # Chase printings of the same card in the same set (Enchanted/Epic live
+    # above the printed range as separate rows) — the detail page charts
+    # their nightly prices alongside the viewed printing's.
+    row["premium_printings"] = db.query(
+        """SELECT c2.id AS card_id, c2.collector_number, c2.rarity,
+                  c2.price_usd, c2.price_usd_foil,
+                  COALESCE((SELECT json_agg(json_build_object(
+                        'captured_at', ph.captured_at,
+                        'usd', ph.usd, 'usd_foil', ph.usd_foil)
+                      ORDER BY ph.captured_at)
+                    FROM price_history ph WHERE ph.card_id = c2.id),
+                    '[]'::json) AS price_history
+           FROM cards c2
+           WHERE c2.set_id = %s AND c2.full_name = %s AND c2.id <> %s
+             AND c2.rarity IN ('Enchanted', 'Epic')
+           ORDER BY c2.rarity""",
+        (row["set_id"], row["full_name"], row["id"]),
+    )
     return row
 
 

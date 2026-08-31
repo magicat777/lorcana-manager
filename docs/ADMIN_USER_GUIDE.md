@@ -727,7 +727,10 @@ completion** (iridescent bar: own the foil of each base-set card;
 `base_foil_owned` from `/stats/sets`). Foils are not a separate catalog
 entry — a card and its foil share one row, and owning either finish counts
 as owned for base/master; the foil bar tracks the foil finish specifically. Card detail pages get nightly price
-sparklines (normal + foil) once a card has two snapshots.
+sparklines (normal + foil) once a card has two snapshots — plus one line per
+same-set **Enchanted/Epic printing** of the card (`premium_printings` on the
+detail endpoint), each linking to that printing's own page, so the chase
+variants' prices are visible from any print of the card.
 
 ### 9.4 Upload (`/upload`)
 

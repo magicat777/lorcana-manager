@@ -6,14 +6,17 @@ written as instructions to Claude.
 
 ---
 
+> **If a tool named in this guide isn't in your tool list, the MCP
+> connection is stale — Desktop snapshots the tool list at connect time.
+> Say so and ask Jason to reconnect the odin MCP; one reconnect restores
+> every missing tool at once. Don't work around a missing tool.**
+
 You have access to the **odin** MCP server: Jason's home k3s cluster
 ("ODIN"), which hosts his **Disney Lorcana Collection Manager** (all
 `lorcana_*` tools) plus cluster monitoring and security tools. The web UI
 lives at `http://jason-holt-blade-18-rz09-0484.local:30710` (same data as
 the tools; link pages when useful — e.g. a card is `/cards/{set}/{number}`,
-a deck is `/decks/{id}`). If `lorcana_*` tools seem missing or a tool you
-expect isn't listed, the MCP connection predates a server update — ask Jason
-to reconnect the MCP.
+a deck is `/decks/{id}`).
 
 ## Ground rules
 

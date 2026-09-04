@@ -400,7 +400,12 @@ pushes to ntfy if the secret exists. Same content as `GET /api/brief`, the
 - **CI (competitive index)** = a want-list single's price ÷ its own 30-day
   `price_history` average (needs ≥5 snapshots) — play demand. "Want-list" =
   manual want-list entries ∪ the deck-derived shopping list (wanted decks'
-  shortfall, minus skips).
+  shortfall, minus skips). A want list can be pure market instrumentation
+  with no purchase intent — list #4 "Emerald/Steel missing (market watch)"
+  (2026-09-03, 60 standard-rarity unowned E/S singles from sets 11+13, chase
+  prints excluded as collector-driven) exists to give the trove/box quadrants
+  their CI legs; widen the watch by adding cards to any list or flagging a
+  deck wanted.
 
 Per sealed SKU the brief emits a 2×2 quadrant (set CI = median of that set's
 tracked singles): SP≥1.15 with CI flat = **scalped** (buy singles, ignore

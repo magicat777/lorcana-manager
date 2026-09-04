@@ -267,3 +267,27 @@ but NOT full-state replay of the opponent's seat. If you build the
 full-state tier, gate it per-log: a `parsed` blob whose opponent-side
 plays exist but draws are absent is a player-perspective log. My-seat
 information remains complete either way.
+
+## Market signals — schema + shared-flag side effect FYI (2026-09-04)
+
+New purchase-planning feature on the webui side; nothing for the engine to
+implement, but two things touch surfaces you share.
+
+New tables (mig 032): `sealed_products` + `sealed_price_obs` — hand-logged
+sealed-box prices (no scrapeable sealed source exists). The daily brief and
+Grafana v10 read them as Sealed Premium (price/MSRP) against a Competitive
+Index (a want-list single's price vs its own trailing 30-day
+`price_history` average) to distinguish scalped boxes from real play
+demand. New API surface `GET/POST /api/market/sealed*`; new MCP tool
+`lorcana_sealed_price`; brief JSON grew a `market` section (additive — your
+Sim page code doesn't read `/api/brief`, listed for completeness).
+
+The side effect that matters to you: **`decks.wanted` now feeds the market
+scan.** Any deck flagged wanted (and not in_use/sim_only) contributes its
+card shortfall to the CI watch pool and can fire buy/momentum/dip alerts in
+Jason's 8am push. If your workflows ever set `wanted` on test or scratch
+decks, prefer `sim_only=true` decks (excluded) or leave `wanted` false —
+a flagged 60-card scratch deck would flood the watch pool. Want list #4
+("Emerald/Steel missing (market watch)", 60 cards, sets 11+13) is
+deliberate market instrumentation, not a build intent — don't treat its
+contents as a deck-construction signal.

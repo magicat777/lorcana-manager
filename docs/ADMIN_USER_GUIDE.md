@@ -1026,7 +1026,10 @@ same index answers `lorcana_rules` in any MCP-connected Claude.
 ## 10. Claude / MCP tools
 
 The `lorcana` domain in odin-mcp (`odin_mcp/tools/lorcana.py`) exposes the
-whole system to Claude at `http://jason-holt-blade-18-rz09-0484.local:30720/mcp`. Deck-building
+whole system to Claude at `http://jason-holt-blade-18-rz09-0484.local:30720/mcp`.
+For Claude **Desktop** conversations, paste `docs/CLAUDE_DESKTOP_MCP_GUIDE.md`
+into the project's instructions — it's the usage playbook (tool map,
+conventions, worked examples) kept in-repo so it evolves with the tools. Deck-building
 advice is grounded in actually-owned/free copies; the match log is designed to
 be dictated conversationally between rounds.
 

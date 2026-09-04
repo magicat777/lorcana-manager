@@ -41,7 +41,7 @@ flowchart LR
             CJ2[CronJob: daily-brief<br/>08:00 PT]
             CJ3[CronJobs: backup 02:00 · snapshot 06:00 · news 07:30]
             J1[Job: migrate<br/>run by apply.sh]
-            J2[Job: seed<br/>manual]
+            J2[Jobs: seed · rules-seed<br/>manual]
         end
         subgraph op [namespace: odin-prime]
             PG[(PostgreSQL<br/>db: lorcana)]
@@ -90,13 +90,15 @@ flowchart LR
 lorcana/
 ├── api/            FastAPI app (Dockerfile, app/{main,config,db}.py)
 │   └── app/
-│       ├── routers/    cards, collection, imports, decks, matchlog (+ duels), stats, sim, brief
+│       ├── routers/    cards, collection, imports, decks, matchlog (+ duels), stats, sim, brief, market, rules
 │       ├── services/   importer, matching, deck_import, snapshots, brief
-│       └── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, lorcast (client)
+│       ├── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, seed_rules, lorcast (client)
+│       └── tests/      in-image parser tests (runnable in-pod)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–030 idempotent SQL migrations
+├── db/migrations/  000–033 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
-└── docs/           this guide
+└── docs/           this guide · SIM_ENGINE_HANDOFF.md (cross-session contract)
+                    · CLAUDE_DESKTOP_MCP_GUIDE.md (paste into Desktop projects)
 ```
 
 ---

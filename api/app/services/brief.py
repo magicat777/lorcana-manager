@@ -22,6 +22,8 @@ CI_DIP = 0.90        # single down ≥10% → buy-the-dip candidate
 SP_HIGH = 1.15       # sealed ≥15% over MSRP counts as a premium
 SP_FLAT_TOL = 0.05   # week-over-week sealed move under 5% counts as flat
 MIN_SNAPSHOTS_30D = 5  # snapshots needed before a CI is trustworthy
+MIN_TRIGGER_PRICE = 1.00  # CI triggers need a real price: a $0.04→$0.05 tick
+                          # is a 25% "move" on a bulk common, not demand
 
 
 def _market_signals() -> dict:
@@ -73,12 +75,13 @@ def _market_signals() -> dict:
             weeks_left = max(0, days // 7)
             ceiling = round(config.WEEKLY_BUDGET_USD * weeks_left, 2)
         trigger = None
+        priced = ci is not None and float(r["avg30"]) >= MIN_TRIGGER_PRICE
         if ci is not None and ceiling is not None \
                 and float(r["avg30"]) > ceiling >= price:
             trigger = "buy"       # crossed under its budget ceiling
-        elif ci is not None and ci >= CI_MOMENTUM:
+        elif priced and ci >= CI_MOMENTUM:
             trigger = "momentum"  # players buying — confirm sealed is flat below
-        elif ci is not None and ci <= CI_DIP:
+        elif priced and ci <= CI_DIP:
             trigger = "dip"       # softening (new-set hype drain) — buy if still playable
         rows.append({
             "full_name": r["full_name"], "set_code": r["set_code"],

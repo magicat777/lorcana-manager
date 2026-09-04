@@ -410,8 +410,11 @@ single it fires 🛒 **buy** (price crossed under its ceiling = weekly budget ×
 weeks of Core left), ↗ **momentum** (CI ≥ 1.10 while the set's sealed premium
 is flat week-over-week — players, not bots), ▼ **dip** (CI ≤ 0.90 — typical
 in the 3–6 weeks after a new set drops), or 🔥 **hot-set** (CI and SP both
-moving — demand real but priced in). Thresholds are constants at the top of
-`api/app/services/brief.py`; budget/horizon knobs are env vars (§4.1).
+moving — demand real but priced in). CI triggers need a 30-day average ≥ $1 —
+a $0.04→$0.05 tick is a 25% "move" on a bulk common, not demand (floor added
+same day after penny commons flooded the first live run). Thresholds are
+constants at the top of `api/app/services/brief.py`; budget/horizon knobs are
+env vars (§4.1).
 
 All CronJobs carry an explicit `timeZone: America/Los_Angeles` (added
 2026-08-18 after discovering the controller was interpreting bare schedules

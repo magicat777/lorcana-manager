@@ -291,3 +291,18 @@ a flagged 60-card scratch deck would flood the watch pool. Want list #4
 ("Emerald/Steel missing (market watch)", 60 cards, sets 11+13) is
 deliberate market instrumentation, not a build intent — don't treat its
 contents as a deck-construction signal.
+
+## Deck-detail stat columns — display-only FYI (2026-09-04)
+
+The webui deck detail page grew sortable Str / Will / Lore columns and a
+"deck totals" line (Σ qty × printed stat) — web bundle only
+(nginx-20260904-deckstats-1); no schema, API, or data-contract change. The
+deck endpoint already carried the stats.
+
+Only note for your side: the totals deliberately count **printed** stats —
+effect-granted strength/willpower/lore (Support, static buffs, songs) is
+rules text and excluded, matching the Cards-page lore filter convention.
+If the Sim page ever surfaces deck-strength summaries, use the same
+printed-stats convention (or label an effective-stats number explicitly as
+engine-derived) so the two pages don't show conflicting totals for the
+same deck.

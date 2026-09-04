@@ -819,7 +819,11 @@ legacy `Name, Normal, Foil, Set, Card Number`).
   **Core-legal** (default on), and **free copies only** (owned copies not
   allocated to built decks); results show ink dots, cost, and free count.
   Per-card −/+ qty (⚠ above 4 copies), owned and **free** columns (short rows
-  highlighted); remove with ✕. Every edit saves immediately.
+  highlighted); remove with ✕. Every edit saves immediately. The card table's
+  columns are click-sortable, including **Str / Will / Lore** (printed stats;
+  added 2026-09-04), with a **deck totals** line below (Σ qty × printed
+  strength / willpower / lore) for at-a-glance positioning — effect-granted
+  stats are rules text and not counted.
 - **Live composition panel:** cost-curve bars, per-ink counts, type breakdown,
   inkable/uninkable split, avg cost, and total character lore — updating with
   every edit (the same analysis the export sheet shows, without leaving the

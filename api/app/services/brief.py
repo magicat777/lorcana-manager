@@ -132,7 +132,7 @@ def _market_signals() -> dict:
         sealed_out.append({
             "id": s["id"], "name": s["name"], "set_code": s["set_code"],
             "kind": s["kind"], "msrp": float(s["msrp"]), "price": float(s["price"]),
-            "observed_at": s["observed_at"].date().isoformat(),
+            "observed_at": s["observed_at"].astimezone(TZ).date().isoformat(),
             "sp": sp, "sp_wow": sp_wow, "set_ci": ci,
             "quadrant": quadrant, "reason": reason,
         })

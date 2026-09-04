@@ -120,6 +120,9 @@ export default function DeckDetail() {
         case 'qty': return c.qty
         case 'name': return c.full_name.toLowerCase()
         case 'cost': return c.cost ?? -1
+        case 'strength': return c.strength ?? -1
+        case 'willpower': return c.willpower ?? -1
+        case 'lore': return c.lore ?? -1
         case 'type': return (c.type ?? []).join(' ')
         case 'owned': return c.owned ?? 0
         case 'free': return c.free ?? 0
@@ -442,10 +445,10 @@ export default function DeckDetail() {
       <table>
         <thead>
           {deck.sim_only
-            ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><th></th></tr>
+            ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="strength" label="Str" /><SortTh k="willpower" label="Will" /><SortTh k="lore" label="Lore" /><SortTh k="type" label="Type" /><th></th></tr>
             : deck.format === 'sealed'
-              ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><SortTh k="in_pool" label="In pool" /><th></th></tr>
-              : <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="type" label="Type" /><SortTh k="owned" label="Owned" /><SortTh k="free" label="Free" /><th></th></tr>}
+              ? <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="strength" label="Str" /><SortTh k="willpower" label="Will" /><SortTh k="lore" label="Lore" /><SortTh k="type" label="Type" /><SortTh k="in_pool" label="In pool" /><th></th></tr>
+              : <tr><SortTh k="qty" label="Qty" /><SortTh k="name" label="Card" /><SortTh k="cost" label="Cost" /><SortTh k="strength" label="Str" /><SortTh k="willpower" label="Will" /><SortTh k="lore" label="Lore" /><SortTh k="type" label="Type" /><SortTh k="owned" label="Owned" /><SortTh k="free" label="Free" /><th></th></tr>}
         </thead>
         <tbody>
           {sortedCards(deck.cards ?? []).map((c) => (
@@ -466,6 +469,9 @@ export default function DeckDetail() {
                 <Link to={`/cards/${c.set_code}/${c.collector_number}`}>{c.full_name}</Link>
               </td>
               <td>{c.cost ?? '—'}</td>
+              <td>{c.strength ?? '—'}</td>
+              <td>{c.willpower ?? '—'}</td>
+              <td>{c.lore ?? '—'}</td>
               <td className="muted">{c.type?.join(' · ')}</td>
               {deck.sim_only ? null : deck.format === 'sealed' ? (
                 <td>{c.in_pool ?? 0}</td>
@@ -482,6 +488,19 @@ export default function DeckDetail() {
           ))}
         </tbody>
       </table>
+      {(deck.cards?.length ?? 0) > 0 && (() => {
+        const tot = (key: 'strength' | 'willpower' | 'lore') =>
+          deck.cards!.reduce((s, c) => s + c.qty * (c[key] ?? 0), 0)
+        return (
+          <p className="muted" style={{ margin: '0.35rem 0 0' }}
+            title="Sum of qty × printed stat — effect-granted stats are rules text">
+            Deck totals: <strong>{tot('strength')}</strong> strength ·{' '}
+            <strong>{tot('willpower')}</strong> willpower ·{' '}
+            <strong>{tot('lore')}</strong> lore <span style={{ fontSize: '0.82rem' }}>
+              (printed stats × copies)</span>
+          </p>
+        )
+      })()}
       {deck.unmatched && deck.unmatched.length > 0 && (
         <div className="panel">
           <h4>Unmatched import lines</h4>

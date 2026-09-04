@@ -14,6 +14,13 @@ LORCAST_DELAY_S = float(os.getenv("LORCAST_DELAY_S", "0.25"))
 # rotation day.
 NEXT_ROTATION = os.getenv("LORCANA_NEXT_ROTATION", "")
 
+# Comprehensive Rules ingestion (jobs/seed_rules.py). The PDF URL is
+# versioned per release, so unset means: discover the current link from the
+# official resources page. Set LORCANA_CR_URL to pin a specific PDF.
+CR_URL = os.getenv("LORCANA_CR_URL", "")
+CR_RESOURCES_URL = os.getenv("LORCANA_CR_RESOURCES_URL",
+                             "https://www.disneylorcana.com/en-US/resources/")
+
 # Market-signal knobs (brief buy triggers on want-list singles).
 # A playable single's price ceiling = weekly budget × Thursdays the set has
 # left in Core; Core life is estimated as release + horizon (set 13, released

@@ -264,6 +264,8 @@ on the phone.
 | `LORCANA_NTFY_URL` | *(unset)* | Read by `daily_brief` only. Unset ⇒ log-only brief. |
 | `LORCANA_HOME_LAT` / `LORCANA_HOME_LON` | *(unset)* | Home coords for nearest-first venue sorting. Env-only by design (privacy — set in the `lorcana-db` secret, never in the repo). Unset ⇒ venues sort A-Z. |
 | `LORCANA_NEXT_ROTATION` | *(unset)* | Next Core rotation date (ISO). Set when announced; the brief shows a countdown (⚠ inside 90 days). |
+| `LORCANA_CR_URL` | *(unset)* | Pin a specific Comprehensive Rules PDF for the rules-seed job. Unset ⇒ the job discovers the current link from the official resources page. |
+| `LORCANA_CR_RESOURCES_URL` | disneylorcana.com resources page | Where the rules-seed job discovers the current CR PDF link. |
 | `LORCANA_WEEKLY_BUDGET_USD` | `0.60` | Market signals: what a playable single is worth per remaining week of its set's Core life. Ceiling = budget × weeks left. |
 | `LORCANA_ROTATION_HORIZON_YEARS` | `2` | Market signals: a set's Core life is estimated as release + horizon (set 13 → summer 2028). Adjust when real per-set rotation dates are announced. |
 
@@ -447,6 +449,44 @@ the charts skip them for the metrics they lack.
 retention, and ntfy alert on failure — full detail and restore procedures in
 §7.1.
 
+### 6.5b Job: `lorcana-rules-seed` — on demand
+
+Runs `python -m app.jobs.seed_rules` (mig 033, 2026-09-04): downloads the
+official **Comprehensive Rules PDF**, parses it into paragraph-numbered rules
+(`1.3.4.1` …), section headings, and glossary terms, and replaces
+`cr_paragraphs`/`cr_meta` in one transaction. Powers the **Rules** web page,
+`GET /api/rules/*`, and the `lorcana_rules` MCP tool — every rules dispute
+resolves to a paragraph citation, not an opinion.
+
+```bash
+kubectl -n lorcana delete job lorcana-rules-seed --ignore-not-found \
+  && kubectl apply -f deploy/jobs/rules-seed-job.yaml
+kubectl -n lorcana logs job/lorcana-rules-seed --tail=3   # expect "rules index loaded"
+```
+
+Details that matter:
+
+- **The PDF URL is versioned per release** (`Comprehensive-Rules_2.2.0-EN.pdf`),
+  so the job discovers the current link from the official resources page at run
+  time; `LORCANA_CR_URL` pins one explicitly (§4.1).
+- **When to rerun:** whenever a CR update ships — one comes with every main
+  set (the news watcher's rules signal is the cue, and it's a step in the §6.6
+  new-set runbook). Every rules response carries the loaded version plus a
+  staleness verdict: `possibly_stale` fires when the newest *numbered* set
+  released more than 30 days after the CR's effective date (grace window
+  because a set's CR goes effective ~a week before the set; promo/format sets
+  never carry CR updates and are excluded).
+- **Copyright:** the CR text is ©Disney/Ravensburger. It lives ONLY in the
+  database, indexed for personal reference through our own tools. Never commit
+  extracted CR text to this public repo — the parser is code, the data is not.
+- **Loud failure:** the parser sanity-checks the load (cover version parses,
+  ≥400 rules, ≥80 glossary terms, no empty bodies) and refuses to replace the
+  index with a suspect parse — a CR layout change fails the job rather than
+  quietly serving garbage. pypdf's fontTools warnings in the job logs are
+  cosmetic. The parser uses pypdf's default extraction mode deliberately:
+  layout mode pads columns with spaces that land mid-word and corrupt the
+  verbatim text.
+
 ### 6.6 Runbook: new set release
 
 (next up: set 14 — Hyperia City, October 2026)
@@ -467,6 +507,11 @@ retention, and ntfy alert on failure — full detail and restore procedures in
    `unknown set '...'`, add an alias (§7.4).
 4. Prices for the new cards appear after the next nightly price refresh (or run
    it manually, §2).
+4b. **Rerun the rules-seed job** (§6.5b) once the set's CR update ships —
+   Ravensburger publishes it about a week before release, and the news
+   watcher's rules signal usually flags the announcement. The Rules
+   page/API/MCP warn `possibly_stale` on their own 30 days after a new
+   numbered set if this step is missed.
 5. **Nothing else needs touching**: webui (set dropdown, four-bar completion
    panels, tag filter, deck building), Grafana (completion table sorts
    `set_num DESC`; per-set value timeseries), and all MCP tools are
@@ -576,6 +621,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
 | `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers, card-detail sparklines, and the market-signal CI. |
+| `cr_paragraphs` / `cr_meta` | Comprehensive Rules index (mig 033): paragraph-numbered rules + section titles + glossary terms with a generated tsvector (GIN) for full-text search; `cr_meta` stamps the loaded CR version/effective date for staleness detection. Loaded/replaced only by the rules-seed job (§6.5b); text is ©Disney — DB-only, never in the repo. |
 | `sealed_products` / `sealed_price_obs` | Market signals (mig 032): sealed SKUs with MSRP (seeds live IN the migration — edit them there, `ON CONFLICT` re-applies the file's value on every apply.sh) + hand-logged price observations (no scrapeable sealed source exists; Lorcast prices singles only). Feeds the brief's Sealed Premium. |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
 | `collection_snapshots` | Daily + per-import collection state (migs 019/020/031): totals, value, `total_foil` (mig 031 — NULL before 2026-08-22, history not reconstructable), rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts + Grafana foils line. |
@@ -963,6 +1009,18 @@ backfill — note the backfill replays under the run's ORIGINAL policy in order
 to verify against the recorded score, so backfilling an MCTS run costs about
 as much as re-running it.
 
+### 9.9 Rules (`/rules`)
+
+Full-text search over the Comprehensive Rules index (§6.5b). One box, two
+modes: free text ("bodyguard challenge", "shift cost") searches rules +
+glossary; a rule number ("7.4.3") jumps to that exact paragraph with its
+parent-section breadcrumbs and immediate sub-rules. Rule-key chips are
+clickable to drill in; results show the full VERBATIM paragraph (rulings
+examples included) — the point is citations for rules disputes, at home or
+between rounds (the public URL works on a phone). The header line shows the
+loaded CR version/effective date and warns when the index looks stale. The
+same index answers `lorcana_rules` in any MCP-connected Claude.
+
 ---
 
 ## 10. Claude / MCP tools
@@ -1003,6 +1061,7 @@ be dictated conversationally between rounds.
 | `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand (incl. market signals). |
+| `lorcana_rules` | Cite the Comprehensive Rules: free text searches rules + glossary full-text; a rule number ("7.4.3") returns that exact paragraph with parent context and sub-rules. Verbatim text + paragraph numbers, stamped with the CR version, stale-index warning built in. |
 | `lorcana_sealed_price` | Sealed price log for the scalper-vs-demand signal: no args lists tracked SKUs with latest premium; `product`+`price` logs an observation ("trove is $88 at Game Kastle"); `msrp` (+`set_code`/`kind`) starts tracking a new SKU. |
 
 ---
@@ -1029,6 +1088,9 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
+| `GET /rules/meta` | Loaded CR version, effective date, counts, `possibly_stale` verdict. |
+| `GET /rules/search?q=` | CR full-text search (rules + glossary, websearch syntax); a rule-number `q` returns that paragraph as `exact` with context/children. |
+| `GET /rules/{key}` | One CR paragraph by number with parent chain + immediate sub-rules. |
 | `GET /market/sealed` | Tracked sealed SKUs with MSRP, latest observation, and sealed premium. |
 | `POST /market/sealed` | Track a sealed SKU (`name`, `msrp`, optional `set_code`, `kind`). Upserts by name. |
 | `POST /market/sealed/{id}/obs` | Log a hand-observed sealed price (`price`, optional `source`); returns the premium. |

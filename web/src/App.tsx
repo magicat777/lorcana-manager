@@ -8,6 +8,7 @@ import DeckExport from './pages/DeckExport'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Brief from './pages/Brief'
+import Rules from './pages/Rules'
 import Stats from './pages/Stats'
 import MatchStats from './pages/MatchStats'
 import Wantlist from './pages/Wantlist'
@@ -29,6 +30,7 @@ export default function App() {
           <NavLink to="/matches">Matches</NavLink>
           <NavLink to="/sim">Sim</NavLink>
           <NavLink to="/brief">Brief</NavLink>
+          <NavLink to="/rules">Rules</NavLink>
           <NavLink to="/upload">Upload</NavLink>
         </nav>
       </header>
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/sim" element={<Sim />} />
           <Route path="/sim/:id" element={<SimRun />} />
           <Route path="/brief" element={<Brief />} />
+          <Route path="/rules" element={<Rules />} />
           <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>

@@ -306,3 +306,30 @@ If the Sim page ever surfaces deck-strength summaries, use the same
 printed-stats convention (or label an effective-stats number explicitly as
 engine-derived) so the two pages don't show conflicting totals for the
 same deck.
+
+## Comprehensive Rules index — a citation source for the engine (2026-09-04)
+
+The webui/DB side now indexes the official CR (v2.2.0, effective 2026-07-09:
+556 numbered paragraphs + 100 glossary terms, mig 033, loaded by an
+on-demand seed job that parses the official PDF). Query surface your side
+can use — HTTP, not the DB, per our standing rule:
+
+- `GET /api/rules/search?q=bodyguard+challenge` — full-text over rules +
+  glossary; a rule-number query ("8.3.3") returns that exact paragraph with
+  parent context and sub-rules.
+- `GET /api/rules/{key}` — one paragraph by number.
+- `GET /api/rules/meta` — CR version/effective date + a `possibly_stale`
+  verdict (fires when a numbered set released >30 days after the CR's
+  effective date).
+
+Where this helps the engine: keyword/mechanic specs can cite CR paragraphs
+in their comments (section 8 covers every keyword — Boost is 8.4), and the
+set-14 spoiler-season mechanic classification we agreed on can now anchor
+"keyword vs primitive" calls to actual CR text once Hyperia City's CR update
+loads. Replay-divergence writeups can cite the governing paragraph too.
+Caveats: the text is verbatim from the official PDF but the index is
+paragraph-granular (no intra-paragraph anchors), and everything is
+©Disney/Ravensburger — fine to quote in commit messages/comments on the
+PRIVATE engine repo, but that's another reason lorcana-engine visibility
+flips need review. The extracted text never goes in the PUBLIC
+lorcana-manager repo.

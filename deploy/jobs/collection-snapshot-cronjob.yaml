@@ -24,7 +24,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: snapshot
-              image: localhost:30500/lorcana/api:fastapi-20260831-premprice-2
+              image: localhost:30500/lorcana/api:fastapi-20260903-market-2
               imagePullPolicy: IfNotPresent
               command: ["python", "-m", "app.jobs.snapshot_collection"]
               envFrom:

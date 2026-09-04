@@ -20,7 +20,29 @@ interface BriefData {
   meta_last5: { ink_pair: string; times_faced: number; losses_to: number }[]
   deck_watch: { value: string; mentions: number }[]
   price_movers: { full_name: string; price_now: string; price_prev: string; delta: string }[]
+  market: {
+    sealed: {
+      id: number; name: string; set_code: string | null; kind: string
+      msrp: number; price: number; observed_at: string
+      sp: number; sp_wow: number | null; set_ci: number | null
+      quadrant: string; reason: string
+    }[]
+    singles: {
+      full_name: string; set_code: string; collector_number: string
+      price: number; avg30: number | null; ci: number | null
+      ceiling: number | null; weeks_left: number | null
+      trigger: 'buy' | 'momentum' | 'dip' | 'hot-set' | null
+    }[]
+    params: { weekly_budget_usd: number; rotation_horizon_years: number }
+  }
   collection: { unique_owned: number; total_copies: number; value: string }
+}
+
+const TRIGGER_BADGE: Record<string, { label: string; cls: string; hint: string }> = {
+  buy: { label: '🛒 BUY', cls: 'ok', hint: 'Crossed under its budget ceiling' },
+  momentum: { label: '↗ momentum', cls: 'ok', hint: 'Players buying while sealed sits flat' },
+  dip: { label: '▼ dip', cls: 'muted', hint: 'Softening — buy if it stays playable' },
+  'hot-set': { label: '🔥 hot set', cls: 'error', hint: 'Singles and sealed both moving — priced in' },
 }
 
 export default function Brief() {
@@ -132,6 +154,62 @@ export default function Brief() {
         <div className="panel">
           <h3 style={{ marginTop: 0 }}>Deck watch — dead-card mentions</h3>
           <p>{b.deck_watch.map((d) => `${d.value} ×${d.mentions}`).join(' · ')}</p>
+        </div>
+      )}
+
+      {(b.market?.sealed.length > 0 || b.market?.singles.length > 0) && (
+        <div className="panel">
+          <h3 style={{ marginTop: 0 }}>Market signals</h3>
+          {b.market.sealed.length > 0 && (
+            <table style={{ marginBottom: '0.6rem' }}>
+              <thead><tr><th>Sealed</th><th>Price</th><th>SP × MSRP</th><th>Set CI</th><th>Read</th></tr></thead>
+              <tbody>
+                {b.market.sealed.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.name}</td>
+                    <td>{money(s.price)} <span className="muted">({s.observed_at})</span></td>
+                    <td className={s.sp >= 1.15 ? 'error' : ''}>{s.sp.toFixed(2)}×</td>
+                    <td>{s.set_ci != null ? s.set_ci.toFixed(2) : '—'}</td>
+                    <td title={s.reason}><strong>{s.quadrant}</strong>{' '}
+                      <span className="muted" style={{ fontSize: '0.82rem' }}>{s.reason}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {b.market.singles.length > 0 && (
+            <table>
+              <thead><tr><th>Want-list single</th><th>Price</th><th>30d avg</th><th>CI</th><th>Ceiling</th><th></th></tr></thead>
+              <tbody>
+                {b.market.singles.map((x) => (
+                  <tr key={`${x.set_code}-${x.collector_number}`}>
+                    <td><Link to={`/cards/${x.set_code}/${x.collector_number}`}>{x.full_name}</Link></td>
+                    <td>{money(x.price)}</td>
+                    <td>{x.avg30 != null ? money(x.avg30) : '—'}</td>
+                    <td className={x.ci == null ? '' : x.ci >= 1.1 ? 'ok' : x.ci <= 0.9 ? 'error' : ''}>
+                      {x.ci != null ? x.ci.toFixed(2) : '—'}
+                    </td>
+                    <td className="muted">
+                      {x.ceiling != null ? `${money(x.ceiling)} (${x.weeks_left}w)` : '—'}
+                    </td>
+                    <td>
+                      {x.trigger && (
+                        <span className={TRIGGER_BADGE[x.trigger].cls} title={TRIGGER_BADGE[x.trigger].hint}>
+                          {TRIGGER_BADGE[x.trigger].label}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.8rem' }}>
+            SP = sealed price ÷ MSRP (speculation). CI = single price ÷ its 30-day average (play
+            demand). SP high with CI flat = scalped box: buy singles, skip sealed. Ceiling =
+            ${b.market.params.weekly_budget_usd.toFixed(2)}/week × weeks of Core left. Sealed
+            prices are hand-logged — ask the MCP to record one when you spot a price.
+          </p>
         </div>
       )}
 

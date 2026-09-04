@@ -14,6 +14,141 @@ from .. import config, db
 TZ = ZoneInfo("America/Los_Angeles")
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
+# Market-signal thresholds. CI (competitive index) = a single's price vs its
+# own 30-day average — play demand. SP (sealed premium) = sealed price vs
+# MSRP — speculation/supply. SP climbing while CI sits still = scalped box.
+CI_MOMENTUM = 1.10   # single up ≥10% on its 30d avg → players are buying
+CI_DIP = 0.90        # single down ≥10% → buy-the-dip candidate
+SP_HIGH = 1.15       # sealed ≥15% over MSRP counts as a premium
+SP_FLAT_TOL = 0.05   # week-over-week sealed move under 5% counts as flat
+MIN_SNAPSHOTS_30D = 5  # snapshots needed before a CI is trustworthy
+
+
+def _market_signals() -> dict:
+    """SP×CI quadrant per sealed SKU + buy triggers on want-list singles.
+
+    Sealed observations are hand-logged (no scrapeable sealed source); singles
+    ride the nightly price_history. "Want-list" = manual want-list entries plus
+    the deck-derived shopping list (wanted, not-built constructed decks whose
+    cards fall short of owned copies, minus wantlist_skips).
+    """
+    singles = db.query(
+        """WITH wl AS (
+             SELECT card_id FROM want_list_cards
+             UNION
+             (SELECT dc.card_id
+              FROM deck_cards dc
+              JOIN decks d ON d.id = dc.deck_id
+                AND d.wanted AND NOT d.in_use AND NOT d.sim_only
+                AND d.format = 'constructed'
+              LEFT JOIN collection col ON col.card_id = dc.card_id
+              GROUP BY dc.card_id, col.qty_normal, col.qty_foil
+              HAVING sum(dc.qty) > COALESCE(col.qty_normal, 0) + COALESCE(col.qty_foil, 0)
+              EXCEPT
+              SELECT card_id FROM wantlist_skips)),
+           hist AS (
+             SELECT ph.card_id, avg(ph.usd) AS avg30, count(*) AS n30
+             FROM price_history ph JOIN wl ON wl.card_id = ph.card_id
+             WHERE ph.captured_at > now() - interval '30 days'
+               AND ph.usd IS NOT NULL
+             GROUP BY ph.card_id)
+           SELECT c.full_name, s.code AS set_code, c.collector_number,
+                  c.price_usd, h.avg30, h.n30,
+                  s.core_legal, s.released_at
+           FROM wl JOIN cards c ON c.id = wl.card_id
+           JOIN sets s ON s.id = c.set_id
+           LEFT JOIN hist h ON h.card_id = c.id
+           WHERE c.price_usd IS NOT NULL""")
+
+    today = datetime.now(TZ).date()
+    horizon_days = int(config.ROTATION_HORIZON_YEARS * 365.25)
+    rows = []
+    for r in singles:
+        price = float(r["price_usd"])
+        ci = round(price / float(r["avg30"]), 3) \
+            if r["n30"] and r["n30"] >= MIN_SNAPSHOTS_30D and float(r["avg30"]) > 0 else None
+        ceiling = weeks_left = None
+        if r["core_legal"] and r["released_at"]:
+            days = (r["released_at"] - today).days + horizon_days
+            weeks_left = max(0, days // 7)
+            ceiling = round(config.WEEKLY_BUDGET_USD * weeks_left, 2)
+        trigger = None
+        if ci is not None and ceiling is not None \
+                and float(r["avg30"]) > ceiling >= price:
+            trigger = "buy"       # crossed under its budget ceiling
+        elif ci is not None and ci >= CI_MOMENTUM:
+            trigger = "momentum"  # players buying — confirm sealed is flat below
+        elif ci is not None and ci <= CI_DIP:
+            trigger = "dip"       # softening (new-set hype drain) — buy if still playable
+        rows.append({
+            "full_name": r["full_name"], "set_code": r["set_code"],
+            "collector_number": r["collector_number"], "price": price,
+            "avg30": round(float(r["avg30"]), 2) if r["avg30"] is not None else None,
+            "ci": ci, "ceiling": ceiling, "weeks_left": weeks_left,
+            "trigger": trigger,
+        })
+    rows.sort(key=lambda x: (x["trigger"] is None, -abs((x["ci"] or 1) - 1)))
+
+    # Median CI per set — the "are this set's singles actually moving" number
+    # each sealed SKU is judged against.
+    set_ci: dict[str, float] = {}
+    for code in {x["set_code"] for x in rows}:
+        cis = sorted(x["ci"] for x in rows if x["set_code"] == code and x["ci"] is not None)
+        if cis:
+            set_ci[code] = cis[len(cis) // 2]
+
+    sealed = db.query(
+        """SELECT p.id, p.name, p.set_code, p.kind, p.msrp,
+                  cur.price, cur.observed_at, prev.price AS prev_price
+           FROM sealed_products p
+           JOIN LATERAL (
+             SELECT price, observed_at FROM sealed_price_obs
+             WHERE product_id = p.id ORDER BY observed_at DESC LIMIT 1) cur ON true
+           LEFT JOIN LATERAL (
+             SELECT price FROM sealed_price_obs
+             WHERE product_id = p.id
+               AND observed_at <= cur.observed_at - interval '5 days'
+             ORDER BY observed_at DESC LIMIT 1) prev ON true
+           WHERE p.active ORDER BY p.set_code DESC NULLS LAST, p.name""")
+    sealed_out = []
+    for s in sealed:
+        sp = round(float(s["price"]) / float(s["msrp"]), 2)
+        sp_wow = round((float(s["price"]) - float(s["prev_price"])) / float(s["prev_price"]), 3) \
+            if s["prev_price"] else None
+        ci = set_ci.get(s["set_code"])
+        sp_high = sp >= SP_HIGH
+        ci_rising = ci is not None and ci >= CI_MOMENTUM
+        if ci is None:
+            quadrant = "scalped?" if sp_high else "quiet"
+            reason = "no tracked singles in this set — add want-list cards to read demand"
+        elif sp_high and ci_rising:
+            quadrant, reason = "hot", "real demand — singles will follow the box, buy yours today"
+        elif sp_high:
+            quadrant, reason = "scalped", "box premium without single demand — buy singles, ignore sealed"
+        elif ci_rising:
+            quadrant, reason = "sealed value", "box near MSRP while its cards heat up — rare good sealed buy"
+        else:
+            quadrant, reason = "quiet", "nothing to do"
+        sealed_out.append({
+            "id": s["id"], "name": s["name"], "set_code": s["set_code"],
+            "kind": s["kind"], "msrp": float(s["msrp"]), "price": float(s["price"]),
+            "observed_at": s["observed_at"].date().isoformat(),
+            "sp": sp, "sp_wow": sp_wow, "set_ci": ci,
+            "quadrant": quadrant, "reason": reason,
+        })
+
+    # The momentum trigger is only a scalper-vs-demand divergence when the
+    # set's sealed premium is flat (or untracked) that same week.
+    sealed_flat = {s["set_code"]: (s["sp_wow"] is None or abs(s["sp_wow"]) < SP_FLAT_TOL)
+                   for s in sealed_out if s["set_code"]}
+    for x in rows:
+        if x["trigger"] == "momentum" and sealed_flat.get(x["set_code"]) is False:
+            x["trigger"] = "hot-set"  # box moving too — demand is real but priced in
+
+    return {"sealed": sealed_out, "singles": rows[:12],
+            "params": {"weekly_budget_usd": config.WEEKLY_BUDGET_USD,
+                       "rotation_horizon_years": config.ROTATION_HORIZON_YEARS}}
+
 
 def build_brief() -> dict:
     now = datetime.now(TZ)
@@ -135,6 +270,7 @@ def build_brief() -> dict:
         "deck_watch": deck_watch,
         "allocation_conflicts": conflicts,
         "price_movers": movers,
+        "market": _market_signals(),
         "collection": totals,
     }
 
@@ -190,6 +326,22 @@ def render_text(b: dict) -> str:
                      + "; ".join(f"{c['full_name']} ({c['claimed']} claimed, own {c['owned']})"
                                  for c in b["allocation_conflicts"])
                      + " — fix the decks or collection counts.")
+    mkt = b.get("market") or {}
+    for s in mkt.get("sealed", []):
+        lines.append(f"Market: {s['name']} ${s['price']:.0f} = {s['sp']:.2f}× MSRP"
+                     + (f", set CI {s['set_ci']:.2f}" if s["set_ci"] is not None else "")
+                     + f" — {s['quadrant'].upper()}: {s['reason']}")
+    TRIGGER_LINE = {
+        "buy": "🛒 BUY {n} at ${p:.2f} — crossed under its ${ceil:.0f} ceiling ({w}w of Core left)",
+        "momentum": "↗ {n} CI {ci:.2f} while sealed sits flat — players are buying, get in early",
+        "dip": "▼ {n} CI {ci:.2f} — softening; buy the dip if it stays playable",
+        "hot-set": "🔥 {n} CI {ci:.2f} and the box is moving too — demand real but priced in",
+    }
+    for x in mkt.get("singles", []):
+        if x["trigger"]:
+            lines.append(TRIGGER_LINE[x["trigger"]].format(
+                n=x["full_name"], p=x["price"], ci=x["ci"] or 0,
+                ceil=x["ceiling"] or 0, w=x["weeks_left"]))
     if b["price_movers"]:
         lines.append("Price movers (owned): "
                      + "; ".join(f"{m['full_name']} {'+' if m['delta'] >= 0 else ''}{m['delta']}"

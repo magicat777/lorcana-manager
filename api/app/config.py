@@ -14,6 +14,14 @@ LORCAST_DELAY_S = float(os.getenv("LORCAST_DELAY_S", "0.25"))
 # rotation day.
 NEXT_ROTATION = os.getenv("LORCANA_NEXT_ROTATION", "")
 
+# Market-signal knobs (brief buy triggers on want-list singles).
+# A playable single's price ceiling = weekly budget × Thursdays the set has
+# left in Core; Core life is estimated as release + horizon (set 13, released
+# 2026-07-17, lands at summer 2028 with the 2-year default). Adjust the
+# horizon when Ravensburger announces real per-set rotation dates.
+WEEKLY_BUDGET_USD = float(os.getenv("LORCANA_WEEKLY_BUDGET_USD", "0.60"))
+ROTATION_HORIZON_YEARS = float(os.getenv("LORCANA_ROTATION_HORIZON_YEARS", "2"))
+
 # Home coordinates for nearest-first venue sorting. Deliberately env-only
 # (set in the lorcana-db secret, never in this public repo); unset = venues
 # sort alphabetically.

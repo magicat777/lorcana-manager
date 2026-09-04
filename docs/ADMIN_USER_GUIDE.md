@@ -264,6 +264,8 @@ on the phone.
 | `LORCANA_NTFY_URL` | *(unset)* | Read by `daily_brief` only. Unset ⇒ log-only brief. |
 | `LORCANA_HOME_LAT` / `LORCANA_HOME_LON` | *(unset)* | Home coords for nearest-first venue sorting. Env-only by design (privacy — set in the `lorcana-db` secret, never in the repo). Unset ⇒ venues sort A-Z. |
 | `LORCANA_NEXT_ROTATION` | *(unset)* | Next Core rotation date (ISO). Set when announced; the brief shows a countdown (⚠ inside 90 days). |
+| `LORCANA_WEEKLY_BUDGET_USD` | `0.60` | Market signals: what a playable single is worth per remaining week of its set's Core life. Ceiling = budget × weeks left. |
+| `LORCANA_ROTATION_HORIZON_YEARS` | `2` | Market signals: a set's Core life is estimated as release + horizon (set 13 → summer 2028). Adjust when real per-set rotation dates are announced. |
 
 ### 4.2 Kubernetes secrets
 
@@ -386,9 +388,30 @@ ntfy push.
 Runs `python -m app.jobs.daily_brief`: builds the brief (tonight's league from
 the venue registry, week schedule, last-event recap + "one change" reminder,
 local meta from last 5 events, dead-card watch, price movers ≥ $0.50 on owned
-cards, collection totals), prints it to logs (→ Loki), and pushes to ntfy if
-the secret exists. Same content as `GET /api/brief`, the **Brief** web page,
-and the `lorcana_brief` MCP tool.
+cards, market signals, collection totals), prints it to logs (→ Loki), and
+pushes to ntfy if the secret exists. Same content as `GET /api/brief`, the
+**Brief** web page, and the `lorcana_brief` MCP tool.
+
+**Market signals** (added 2026-09-03) distinguish "sealed is scalped" from
+"the card is actually in demand" by reading two ratios against each other:
+
+- **SP (sealed premium)** = hand-logged sealed price ÷ MSRP — speculation and
+  supply. Logged via `lorcana_sealed_price` or `POST /api/market/sealed/{id}/obs`.
+- **CI (competitive index)** = a want-list single's price ÷ its own 30-day
+  `price_history` average (needs ≥5 snapshots) — play demand. "Want-list" =
+  manual want-list entries ∪ the deck-derived shopping list (wanted decks'
+  shortfall, minus skips).
+
+Per sealed SKU the brief emits a 2×2 quadrant (set CI = median of that set's
+tracked singles): SP≥1.15 with CI flat = **scalped** (buy singles, ignore
+sealed); both rising = **hot** (buy your singles today); SP near MSRP with CI
+rising = **sealed value** (the rare good sealed buy); both flat = quiet. Per
+single it fires 🛒 **buy** (price crossed under its ceiling = weekly budget ×
+weeks of Core left), ↗ **momentum** (CI ≥ 1.10 while the set's sealed premium
+is flat week-over-week — players, not bots), ▼ **dip** (CI ≤ 0.90 — typical
+in the 3–6 weeks after a new set drops), or 🔥 **hot-set** (CI and SP both
+moving — demand real but priced in). Thresholds are constants at the top of
+`api/app/services/brief.py`; budget/horizon knobs are env vars (§4.1).
 
 All CronJobs carry an explicit `timeZone: America/Los_Angeles` (added
 2026-08-18 after discovering the controller was interpreting bare schedules
@@ -544,7 +567,8 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','1-0','0-1','DRAW','BYE' — single-game results for duels.ink, mig 024), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
-| `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers. |
+| `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers, card-detail sparklines, and the market-signal CI. |
+| `sealed_products` / `sealed_price_obs` | Market signals (mig 032): sealed SKUs with MSRP (seeds live IN the migration — edit them there, `ON CONFLICT` re-applies the file's value on every apply.sh) + hand-logged price observations (no scrapeable sealed source exists; Lorcast prices singles only). Feeds the brief's Sealed Premium. |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
 | `collection_snapshots` | Daily + per-import collection state (migs 019/020/031): totals, value, `total_foil` (mig 031 — NULL before 2026-08-22, history not reconstructable), rarity/ink/set/type/cost breakdowns (JSONB). Backfilled rows (from `imports`) carry totals only. Feeds the Stats history charts + Grafana foils line. |
 | `sim_results` / `sim_deck_runs` | Sim engine (migs 012/013/017/021, Lorcana-Sim repo): nightly matchup aggregates / per-deck runs with status, win rates, analysis JSONB. |
@@ -893,7 +917,9 @@ The daily digest on demand: tonight's league night (from venue
 `event_night`), week schedule, **official news** (latest 8 from
 disneylorcana.com with NEW badges on items first seen in the last 36 h), last
 event recap with your "one change" reminder, local meta (last 5 events),
-dead-card watch for your last deck, owned-card price movers, and collection
+dead-card watch for your last deck, owned-card price movers, **market
+signals** (sealed premium × want-list competitive index — quadrant per sealed
+SKU, CI/ceiling/trigger badges per want-list single; see §6.3), and collection
 totals. Identical content to the 8am push (the push includes only NEW news
 items).
 
@@ -964,7 +990,8 @@ be dictated conversationally between rounds.
 | `lorcana_events` / `lorcana_event` | Recent events / full pre-pairings review of one event. |
 | `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
-| `lorcana_brief` | The daily brief text on demand. |
+| `lorcana_brief` | The daily brief text on demand (incl. market signals). |
+| `lorcana_sealed_price` | Sealed price log for the scalper-vs-demand signal: no args lists tracked SKUs with latest premium; `product`+`price` logs an observation ("trove is $88 at Game Kastle"); `msrp` (+`set_code`/`kind`) starts tracking a new SKU. |
 
 ---
 
@@ -989,7 +1016,10 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/value-history` | Collection value at each daily price snapshot. |
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
-| `GET /brief` | Structured brief + rendered `text`. |
+| `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
+| `GET /market/sealed` | Tracked sealed SKUs with MSRP, latest observation, and sealed premium. |
+| `POST /market/sealed` | Track a sealed SKU (`name`, `msrp`, optional `set_code`, `kind`). Upserts by name. |
+| `POST /market/sealed/{id}/obs` | Log a hand-observed sealed price (`price`, optional `source`); returns the premium. |
 | `GET/POST /decks`, `GET/PUT/DELETE /decks/{id}` | Deck CRUD (name unique; PUT replaces the whole card list). DELETE writes a tombstone first (`?source=webui\|mcp\|api`). |
 | `GET /deck-tombstones`, `GET /deck-tombstones/{id}` | Deleted decks (mig 029) with full recipes — explains deck-id gaps (ids are never reused); detail carries the recoverable card list. |
 | `POST /deck-tombstones/{id}/restore` | Resurrect a deleted deck as a NEW deck from the tombstone recipe (optional `name` when the original is taken; missing catalog cards skipped + reported; tombstone gains `restored_deck_id`). |

@@ -333,3 +333,14 @@ paragraph-granular (no intra-paragraph anchors), and everything is
 PRIVATE engine repo, but that's another reason lorcana-engine visibility
 flips need review. The extracted text never goes in the PUBLIC
 lorcana-manager repo.
+
+## Market watch extended to the whole rotation (2026-09-05)
+
+Addendum to the 2026-09-04 market-signals note: want list #4
+("Emerald/Steel missing (market watch)") grew from 60 cards (sets 11+13)
+to **184 cards across all Core sets 9–13** — same convention
+(standard-rarity, unowned, Emerald/Steel), same caveat, now louder: those
+184 entries are price instrumentation for per-set CI medians, NOT deck
+construction or acquisition intent. Nothing else changed — no schema, no
+API; the Grafana panel and brief quadrants derive their per-set series
+from want-list membership at query time.

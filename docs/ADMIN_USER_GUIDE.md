@@ -406,10 +406,14 @@ pushes to ntfy if the secret exists. Same content as `GET /api/brief`, the
   manual want-list entries ∪ the deck-derived shopping list (wanted decks'
   shortfall, minus skips). A want list can be pure market instrumentation
   with no purchase intent — list #4 "Emerald/Steel missing (market watch)"
-  (2026-09-03, 60 standard-rarity unowned E/S singles from sets 11+13, chase
-  prints excluded as collector-driven) exists to give the trove/box quadrants
-  their CI legs; widen the watch by adding cards to any list or flagging a
-  deck wanted.
+  (184 standard-rarity unowned E/S singles across all Core sets 9–13; chase
+  prints excluded as collector-driven; created 2026-09-03 for sets 11+13,
+  extended 2026-09-05 to the whole rotation) gives every Core set a CI
+  median — the per-set lines on the Grafana market panel and the quadrants'
+  CI legs are data-driven off this membership, so widening the watch is just
+  adding cards to any list or flagging a deck wanted (no dashboard edit).
+  Momentum triggers in sets with no tracked sealed SKU treat sealed as
+  "unknown/flat" — log a sealed price for that set to sharpen them.
 
 Per sealed SKU the brief emits a 2×2 quadrant (set CI = median of that set's
 tracked singles): SP≥1.15 with CI flat = **scalped** (buy singles, ignore

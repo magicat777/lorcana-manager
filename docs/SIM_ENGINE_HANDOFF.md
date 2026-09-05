@@ -344,3 +344,13 @@ to **184 cards across all Core sets 9–13** — same convention
 construction or acquisition intent. Nothing else changed — no schema, no
 API; the Grafana panel and brief quadrants derive their per-set series
 from want-list membership at query time.
+
+## Sealed tracking now spans the rotation (2026-09-05, later)
+
+Data-only follow-up: every Core set 9–13 now has a tracked sealed SKU
+(Fabled / Whispers / Winterspell / Wilds Unknown troves + the Attack of
+the Vine! booster box), added at runtime via the market API — no schema,
+migration, or endpoint change since the 2026-09-04 note. All five read
+SCALPED (SP 1.4–6.2× MSRP against flat singles CI). Nothing for the
+engine to do; listed so `sealed_products` rows you may see in the DB (or
+market lines in the brief) have a provenance.

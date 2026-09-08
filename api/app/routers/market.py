@@ -117,7 +117,7 @@ def top_holdings(limit: int = 20):
 @router.get("/market/movers")
 def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
            owned: bool = False, set_code: str = "", finish: str = "",
-           rarity: str = "", core_legal: bool = False):
+           rarity: str = "", core_legal: bool = False, wantlist: bool = False):
     """Biggest percent price moves per (card, finish) over the window, with a
     price floor so ten-cent swings on bulk commons don't dominate. Filters:
     `set_code`, `finish` (normal|foil), `rarity`, `core_legal=true`,
@@ -159,18 +159,33 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
            JOIN cards c ON c.id = f.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
-           WHERE f.then_price >= %(min_price)s AND f.now_price IS NOT NULL
+           WHERE f.then_price > 0 AND f.now_price IS NOT NULL
+             -- floor on the LARGER endpoint: a card that rose THROUGH the
+             -- floor is exactly what a momentum query must not drop
+             AND GREATEST(f.then_price, f.now_price) >= %(min_price)s
              AND (%(set_code)s = '' OR s.code = %(set_code)s)
              AND (%(finish)s = '' OR f.finish = %(finish)s)
              AND (%(rarity)s = '' OR c.rarity ILIKE %(rarity)s)
              AND (NOT %(core)s OR s.core_legal)
              AND (NOT %(owned)s
                   OR COALESCE(col.qty_normal, 0) + COALESCE(col.qty_foil, 0) > 0)
+             AND (NOT %(wantlist)s OR f.card_id IN (
+                    SELECT card_id FROM want_list_cards
+                    UNION
+                    (SELECT dc.card_id FROM deck_cards dc
+                     JOIN decks d ON d.id = dc.deck_id
+                       AND d.wanted AND NOT d.in_use AND NOT d.sim_only
+                       AND d.format = 'constructed'
+                     LEFT JOIN collection col2 ON col2.card_id = dc.card_id
+                     GROUP BY dc.card_id, col2.qty_normal, col2.qty_foil
+                     HAVING sum(dc.qty) > COALESCE(col2.qty_normal, 0)
+                                          + COALESCE(col2.qty_foil, 0)
+                     EXCEPT SELECT card_id FROM wantlist_skips)))
            ORDER BY abs(100 * (f.now_price - f.then_price) / f.then_price) DESC
            LIMIT %(limit)s""",
         {"days": days, "min_price": min_price, "limit": limit, "owned": owned,
          "set_code": set_code, "finish": finish, "rarity": rarity,
-         "core": core_legal})
+         "core": core_legal, "wantlist": wantlist})
     return {"as_of": _price_as_of(), "days": days, "min_price": min_price,
             "rows": rows}
 

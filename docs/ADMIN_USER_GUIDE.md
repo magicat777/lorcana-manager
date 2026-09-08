@@ -353,6 +353,11 @@ new value the clean 7-day window empties (<3 obs) and the new level is
 accepted — a genuine crash is quarantined ~7 days, never lost. First catch:
 P1/4 Cruella foil $1250→$0.25 (5000× product-mapping glitch, flagged
 2026-09-05..08 in mig 034; catalog price restored to the last clean tick).
+Round 2 (same day): a third tier holds >±20% single-night moves on
+big-ticket cards (7d median > $100) for ONE night — a second
+consecutive night within 15% confirms the move and it's accepted
+(the hold night stays flagged in history); the hard >10×/<0.1× tier
+is never confirmable. Rules live in `_suspect()` in refresh_prices.py.
 
 The brief's *price movers* section needs **at least two** history snapshots per
 card, so it stays empty until the second nightly run after setup. (The first
@@ -1090,7 +1095,7 @@ be dictated conversationally between rounds.
 | `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand (incl. market signals). |
-| `lorcana_price_check` | Batch price check: list of 'set/number' printings (max 20) → one compact line each (both finishes, Δ/CI/mv per finish, owned counts) + one as-of stamp — one call instead of N card lookups. |
+| `lorcana_price_check` | Batch price check: list of 'set/number' printings (max 20) → one line each with both finishes (Δ, 7d %, CI, mv, n= per finish), foil ratio, $/legal-week, owned counts; header carries canonical set names + one as-of stamp. |
 | `lorcana_holdings` | Top owned cards by holding value: per-finish day deltas ($ and unit-%), foil-premium ratio (~1 play-priced, 2+ collector-priced), 30-day liquidity proxy, snapshot as-of stamp — the Grafana Top-20 as text for agents. |
 | `lorcana_movers` | Biggest PERCENT price moves per card+finish over N days (default 7) with a min-price floor (default $1); filters `set_code`/`finish`/`rarity`/`core_legal`/`owned`; each row carries `ci` (now ÷ own 30d avg); suspect ticks excluded; as-of stamped. |
 | `lorcana_rules` | Cite the Comprehensive Rules: free text searches rules + glossary full-text; a rule number ("7.4.3") returns that exact paragraph with parent context and sub-rules. Verbatim text + paragraph numbers, stamped with the CR version, stale-index warning built in. |
@@ -1121,7 +1126,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /missing?set=&rarity=` | Unowned cards in a set, with both finish prices, `legal_weeks_left`, and `deck_need` (wanted-deck shortfall copies). |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
 | `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `ci_*` (now ÷ own 30d avg), `moves_*_30d` liquidity proxy; suspect ticks excluded (cap 100). |
-| `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci` + `n_obs_30d`; suspect ticks excluded. |
+| `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=&wantlist=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci` + `n_obs_30d`; `wantlist=true` restricts to want-list members (manual ∪ deck-derived); the price floor applies to the LARGER endpoint (a card rising through the floor counts — fixed 2026-09-08 after 13/99 foil vanished from a $5 run); suspect ticks excluded. |
 | `GET /rules/meta` | Loaded CR version, effective date, counts, `possibly_stale` verdict. |
 | `GET /rules/search?q=` | CR full-text search (rules + glossary, websearch syntax); a rule-number `q` returns that paragraph as `exact` with context/children. |
 | `GET /rules/{key}` | One CR paragraph by number with parent chain + immediate sub-rules. |

@@ -4,12 +4,8 @@ Outlier guard (2026-09-08): each finish's new tick is checked against its
 trailing 7-day median and 30-day liquidity. A suspect tick is still WRITTEN
 to price_history (raw value, append-only truth) but flagged
 suspect_normal/suspect_foil, and does NOT update cards.price_usd* — the
-"current price" keeps its last accepted value. Rule, per finish:
-
-  suspect if ratio = new/median7 is >10x or <0.1x (always an artifact), or
-  >2.5x / <0.4x while the card moved <15 of the last 30 nights (illiquid —
-  one weird listing can swing a thin market price; a LIQUID card moving 2.5x
-  is a real event and is let through, e.g. the 2026-09 Mickey-foil rally).
+"current price" keeps its last accepted value. The rule tiers and the
+two-night confirmation for big-ticket moves live in _suspect() below.
 
 Needs >=3 prior obs in the 7d window; new cards pass unchecked. Flagged
 ticks surface on the Grafana data-quality panel — visible, never silently
@@ -25,13 +21,28 @@ from .. import config
 from . import lorcast
 
 
-def _suspect(new, med, n_obs, mv) -> bool:
+def _suspect(new, med, n_obs, mv, last_val=None, last_sus=False) -> bool:
+    """Three tiers + a confirmation rule (2026-09-08 round 2):
+    - hard (>10x / <0.1x): always suspect, never confirmable — a persistent
+      product-remap artifact stays quarantined until the 7d median self-heals
+    - illiquid (>2.5x / <0.4x while <15 moves/30): one weird listing on a
+      thin market
+    - high-value (>±20% while 7d median > $100): big-ticket cards get held
+      ONE night — if the next night's tick agrees within 15%, the move is
+      real (two consecutive nights confirm) and it's accepted; the first
+      night's tick stays flagged in history as the record of the hold."""
     if new is None or med is None or n_obs < 3 or float(med) <= 0:
         return False
-    r = float(new) / float(med)
+    new_f, med_f = float(new), float(med)
+    r = new_f / med_f
     if r > 10 or r < 0.1:
         return True
-    return (r > 2.5 or r < 0.4) and mv < 15
+    moderate = ((r > 2.5 or r < 0.4) and mv < 15) \
+        or ((r > 1.2 or r < 0.83) and med_f > 100)
+    if moderate and last_sus and last_val \
+            and abs(new_f / float(last_val) - 1) <= 0.15:
+        return False
+    return moderate
 
 
 def _stats(conn) -> dict:
@@ -64,6 +75,16 @@ def _stats(conn) -> dict:
         for r in cur.fetchall():
             if r["card_id"] in stats:
                 stats[r["card_id"]].update(mv_n=r["mv_n"], mv_f=r["mv_f"])
+        # last tick + its flags per card (the two-night confirmation rule)
+        cur.execute(
+            """SELECT DISTINCT ON (card_id) card_id,
+                      usd AS last_n, usd_foil AS last_f,
+                      suspect_normal AS lsus_n, suspect_foil AS lsus_f
+               FROM price_history ORDER BY card_id, captured_at DESC""")
+        for r in cur.fetchall():
+            if r["card_id"] in stats:
+                stats[r["card_id"]].update(last_n=r["last_n"], last_f=r["last_f"],
+                                           lsus_n=r["lsus_n"], lsus_f=r["lsus_f"])
     return stats
 
 
@@ -80,8 +101,10 @@ def main() -> int:
                     prices = c.get("prices") or {}
                     usd, usd_f = prices.get("usd"), prices.get("usd_foil")
                     st = stats.get(c["id"], {})
-                    sn = _suspect(usd, st.get("med_n"), st.get("n_n", 0), st.get("mv_n", 0))
-                    sf = _suspect(usd_f, st.get("med_f"), st.get("n_f", 0), st.get("mv_f", 0))
+                    sn = _suspect(usd, st.get("med_n"), st.get("n_n", 0), st.get("mv_n", 0),
+                                  st.get("last_n"), st.get("lsus_n", False))
+                    sf = _suspect(usd_f, st.get("med_f"), st.get("n_f", 0), st.get("mv_f", 0),
+                                  st.get("last_f"), st.get("lsus_f", False))
                     if sn or sf:
                         flagged += 1
                         which = " ".join(w for w, b in (("normal", sn), ("foil", sf)) if b)

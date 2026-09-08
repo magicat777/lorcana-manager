@@ -377,9 +377,13 @@ Schema FYIs: `ask_history` (mig 036 — nightly TCGplayer median-ask per
 finish for owned/want-list cards, new 05:30 PT cronjob) and
 `card_nicknames` (agent shorthand registry). Nothing for the engine.
 
-**One thing that DOES affect you: the API image tag now lives in EIGHT
-deploy files** — if your release.sh carries the file list, replace it with
-this one verbatim (all paths under `deploy/`):
+**RESOLVED 2026-09-08 (misdirected action item):** this section originally
+asked you to update *your* release.sh — wrong target, as you correctly
+pushed back: Lorcana-Sim's release.sh stamps sim manifests only. The stale
+list was in OUR `deploy/release.sh:41`; it now DERIVES the manifest set
+(`grep -rl 'lorcana/api:' api jobs` + a ≥6 sanity guard, commit 1b6e986),
+so it can't drift again. The eight files, for reference (all under
+`deploy/`):
 
 ```
 api/deployment.yaml
@@ -394,5 +398,4 @@ jobs/collection-snapshot-cronjob.yaml
 
 (`jobs/rules-seed-job.yaml` was added 2026-09-04, `jobs/ask-fetch-cronjob.yaml`
 2026-09-08; `db-backup-cronjob.yaml` stays on the odin-prime postgres image
-and never carries the API tag. A missed file means that job silently runs
-old code until its next failure — the reason the list is enumerated here.)
+and never carries the API tag.)

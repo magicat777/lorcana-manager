@@ -170,7 +170,10 @@ buildah push --tls-verify=false localhost:30500/lorcana/web:nginx-YYYYMMDD
 
 Then set the new tags in the manifests. **The API tag appears in EIGHT
 files** (the deployment plus every job that runs `python -m app.jobs.*`;
-count grew 2026-09-04/08 — the sim session's release.sh list must match):
+count grew 2026-09-04/08). `deploy/release.sh` DERIVES this set
+(`grep -rl 'lorcana/api:' api jobs`) since 2026-09-08, after its hardcoded
+list went stale twice in five days — manual sed bumps must still cover all
+eight:
 
 - `deploy/api/deployment.yaml`
 - `deploy/jobs/seed-job.yaml`

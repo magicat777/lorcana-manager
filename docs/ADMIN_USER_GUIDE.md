@@ -269,7 +269,7 @@ on the phone.
 | `LORCANA_CR_URL` | *(unset)* | Pin a specific Comprehensive Rules PDF for the rules-seed job. Unset ⇒ the job discovers the current link from the official resources page. |
 | `LORCANA_CR_RESOURCES_URL` | disneylorcana.com resources page | Where the rules-seed job discovers the current CR PDF link. |
 | `LORCANA_WEEKLY_BUDGET_USD` | `0.60` | Market signals: what a playable single is worth per remaining week of its set's Core life. Ceiling = budget × weeks left. |
-| `LORCANA_ROTATION_HORIZON_YEARS` | `2` | Market signals: a set's Core life is estimated as release + horizon (set 13 → summer 2028). Adjust when real per-set rotation dates are announced. |
+| `LORCANA_ROTATION_HORIZON_YEARS` | `2` | Market signals FALLBACK only (since mig 035): `sets.rotation_est` drives the ceiling and $/legal-week when set; this release+horizon estimate covers core-legal sets without one. |
 
 ### 4.2 Kubernetes secrets
 
@@ -433,7 +433,8 @@ tracked singles): SP≥1.15 with CI flat = **scalped** (buy singles, ignore
 sealed); both rising = **hot** (buy your singles today); SP near MSRP with CI
 rising = **sealed value** (the rare good sealed buy); both flat = quiet. Per
 single it fires 🛒 **buy** (price crossed under its ceiling = weekly budget ×
-weeks of Core left), ↗ **momentum** (CI ≥ 1.10 while the set's sealed premium
+weeks of Core left — from `sets.rotation_est` (mig 035) when set, else
+release + horizon), ↗ **momentum** (CI ≥ 1.10 while the set's sealed premium
 is flat week-over-week — players, not bots), ▼ **dip** (CI ≤ 0.90 — typical
 in the 3–6 weeks after a new set drops), or 🔥 **hot-set** (CI and SP both
 moving — demand real but priced in). CI triggers need a 30-day average ≥ $1 —
@@ -831,7 +832,10 @@ sparklines (normal + foil) once a card has two snapshots — plus one line per
 price series of every other **same-set printing** of the card
 (`sibling_printings` on the detail endpoint): a standard print shows its
 Enchanted/Epic variants, a chase print shows the standard one, each row
-linking to that printing's own page.
+linking to that printing's own page. Under the sparklines a **price
+confidence** line (2026-09-08) shows per-finish nights-moved/30 and the
+snapshot's age — the market price only re-computes on sales, so under ~5
+moves the level is stale and one sale can jump it.
 
 ### 9.4 Upload (`/upload`)
 
@@ -1103,7 +1107,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /sets` | Sets + card counts. |
 | `GET /cards` | Paged search: `q, set, ink, rarity, type, tags` (comma-separated classifications, card must carry all), `lore, owned=all\|owned\|missing, sort=set\|name\|cost\|price, page, page_size≤100`. |
 | `GET /cards/tags` | All classification tags with card counts (feeds the tag filter). |
-| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free` + `price_history` (nightly) + `sibling_printings` (every other same-set printing of the card — chase variants from a standard print, the standard print from a chase card — each with its own nightly price history). |
+| `GET /cards/{set}/{number}` | Card detail + decks containing it + `qty_free` + `price_history` (nightly) + `rotation_est`/`legal_weeks_left` + `sibling_printings` (every other same-set printing of the card — chase variants from a standard print, the standard print from a chase card — each with its own nightly price history). |
 | `PUT /collection/{card_id}` | Set absolute `{qty_normal, qty_foil}`. |
 | `POST /imports` | Multipart upload: `file, mode=replace\|merge, dry_run, force, note`. 413 >10 MiB, 409 duplicate merge, 422 bad format. Real imports also snapshot the collection. |
 | `GET /imports`, `GET /imports/{id}` | Import history / full report incl. unmatched rows + per-card diff. |
@@ -1113,7 +1117,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/snapshots?days=` | Collection snapshots (daily + per-import) with breakdowns — the Stats history charts. |
 | `GET /stats/value-history` | Collection value at each daily price snapshot. |
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
-| `GET /missing?set=` | Unowned cards in a set. |
+| `GET /missing?set=` | Unowned cards in a set, with both finish prices and `legal_weeks_left` (from `rotation_est`). |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
 | `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `ci_*` (now ÷ own 30d avg), `moves_*_30d` liquidity proxy; suspect ticks excluded (cap 100). |
 | `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci`; suspect ticks excluded. |
@@ -1145,7 +1149,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /matchlog/cut-list?deck_id=` | Never-MVP / dead-mention analysis (`event_type` filter). |
 | `GET /matchlog/stats?deck_id=` | Win-rate analytics (overall, play/draw, game no., loss modes, shapes, per deck; `event_type` filter). |
 | `PUT /decks/{id}/wanted` | Flag/unflag a deck for the want list. |
-| `GET /wantlist` | Aggregated, priced shopping list across wanted decks; skipped cards listed separately; `text` + `tcg_text` (TCGplayer Mass Entry card codes) exports. |
+| `GET /wantlist` | Aggregated, priced shopping list across wanted decks (rows carry `legal_weeks_left`); skipped cards listed separately; `text` + `tcg_text` (TCGplayer Mass Entry card codes) exports. |
 | `POST /wantlist/skips`, `DELETE /wantlist/skips/{card_id}` | Remove/restore one card on the aggregated list without unflagging decks. |
 | `POST /wantlist/clear` | Unflag every wanted deck (empties the deck-derived list; skips kept). |
 | `GET/POST /wantlists`, `DELETE /wantlists/{id}` | Named want lists ("Want for Rainbow Hunny"), optionally deck-linked — a linked list auto-includes that deck's live shortfall. |

@@ -38,7 +38,17 @@ done
 case "$component" in
   api) repo="lorcana/api"; prefix="fastapi"; context="../api"; deployment="lorcana-api"
        primary="api/deployment.yaml"
-       manifests="api/deployment.yaml jobs/daily-brief-cronjob.yaml jobs/news-fetch-cronjob.yaml jobs/price-refresh-cronjob.yaml jobs/seed-job.yaml jobs/collection-snapshot-cronjob.yaml" ;;
+       # Derived, not hardcoded: the list drifted stale twice in five days
+       # (rules-seed-job 2026-09-04, ask-fetch-cronjob 2026-09-08) and a
+       # missed manifest silently runs old code until its nightly job. Any
+       # file under api/ or jobs/ referencing the API image gets stamped.
+       manifests="$(grep -rl 'lorcana/api:' api jobs)"
+       count=$(echo "$manifests" | grep -c .)
+       if [ "$count" -lt 6 ]; then
+         echo "!! sanity: expected >=6 API manifests, found ${count}:" >&2
+         echo "$manifests" >&2
+         exit 1
+       fi ;;
   web) repo="lorcana/web"; prefix="nginx"; context="../web"; deployment="lorcana-web"
        primary="web/deployment.yaml"
        manifests="web/deployment.yaml" ;;

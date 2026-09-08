@@ -137,20 +137,22 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
                    FROM ph
                    WHERE captured_at <= now() - make_interval(days => %(days)s)
                    ORDER BY card_id, captured_at DESC),
-           avg30 AS (SELECT card_id, avg(usd) AS a_n, avg(usd_foil) AS a_f
+           avg30 AS (SELECT card_id, avg(usd) AS a_n, avg(usd_foil) AS a_f,
+                            count(usd) AS n_n, count(usd_foil) AS n_f
                      FROM ph WHERE captured_at > now() - interval '30 days'
                      GROUP BY card_id),
            finishes AS (
              SELECT l.card_id, 'normal' AS finish, t.usd AS then_price,
-                    l.usd AS now_price, a.a_n AS avg30
+                    l.usd AS now_price, a.a_n AS avg30, a.n_n AS n_obs_30d
              FROM latest l JOIN thn t USING (card_id) LEFT JOIN avg30 a USING (card_id)
              UNION ALL
-             SELECT l.card_id, 'foil', t.usd_foil, l.usd_foil, a.a_f
+             SELECT l.card_id, 'foil', t.usd_foil, l.usd_foil, a.a_f, a.n_f
              FROM latest l JOIN thn t USING (card_id) LEFT JOIN avg30 a USING (card_id))
            SELECT c.full_name, s.code AS set_code, c.collector_number, c.rarity,
                   f.finish, f.then_price, f.now_price,
                   round(100 * (f.now_price - f.then_price) / f.then_price, 1) AS pct,
                   CASE WHEN f.avg30 > 0 THEN round(f.now_price / f.avg30, 2) END AS ci,
+                  COALESCE(f.n_obs_30d, 0) AS n_obs_30d,
                   COALESCE(col.qty_normal, 0) AS qty_normal,
                   COALESCE(col.qty_foil, 0) AS qty_foil
            FROM finishes f

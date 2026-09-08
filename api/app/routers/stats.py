@@ -127,18 +127,29 @@ def movers(days: int = 30, limit: int = 10):
 
 
 @router.get("/missing")
-def missing(set: str, limit: int = 250):
+def missing(set: str, limit: int = 250, rarity: str = ""):
+    """Unowned cards in a set. deck_need = copies wanted-deck shortfalls call
+    for (wanted, not-built constructed decks, minus skips) — 'missing ranked
+    by deck need' without a want-list cross-reference."""
     return db.query(
         """SELECT c.full_name, c.collector_number, c.rarity, c.ink,
                   c.price_usd, c.price_usd_foil,
                   CASE WHEN s.core_legal AND s.rotation_est IS NOT NULL THEN
                     GREATEST(0, (s.rotation_est - current_date)) / 7
-                  END AS legal_weeks_left
+                  END AS legal_weeks_left,
+                  COALESCE((SELECT sum(dc.qty) FROM deck_cards dc
+                            JOIN decks d ON d.id = dc.deck_id
+                              AND d.wanted AND NOT d.in_use AND NOT d.sim_only
+                              AND d.format = 'constructed'
+                            WHERE dc.card_id = c.id
+                              AND NOT EXISTS (SELECT 1 FROM wantlist_skips ws
+                                              WHERE ws.card_id = c.id)), 0) AS deck_need
            FROM cards c
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
            WHERE s.code = %s AND COALESCE(col.qty_normal,0)+COALESCE(col.qty_foil,0) = 0
+             AND (%s = '' OR c.rarity ILIKE %s)
            ORDER BY NULLIF(regexp_replace(c.collector_number,'\\D','','g'),'')::int NULLS LAST
            LIMIT %s""",
-        (set, min(limit, 1000)),
+        (set, rarity, rarity, min(limit, 1000)),
     )

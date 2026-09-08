@@ -1061,11 +1061,11 @@ be dictated conversationally between rounds.
 
 | Tool | What it does |
 |---|---|
-| `lorcana_search` | Catalog search (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
+| `lorcana_search` | Catalog search (foil ✦ price fallback on chase printings, 2026-09-08) (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
 | `lorcana_tags` | All classification tags (Storyborn, Toy, Hunny, …) with catalog counts — the valid `tags` values. |
-| `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta with 7/30-day percent change, 30-day price-movement count (liquidity), foil-premium ratio with a play-vs-collector read, sibling-printing prices, per-finish CI (now ÷ own 30d avg), Core-legal weeks left with $/legal-week, the set's sealed premium beside CI (the quadrant in one glance), and the snapshot as-of stamp — computed MCP-side from the endpoint's `price_history`/`sibling_printings`. |
+| `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta with 7/30-day percent change, 30-day price-movement count (liquidity), foil-premium ratio with a play-vs-collector read, sibling-printing prices, per-finish CI (now ÷ own 30d avg), Core-legal weeks left with $/legal-week, the set's sealed premium beside CI (the quadrant in one glance), and the snapshot as-of stamp; suspect ticks are excluded from Δ/CI/liquidity with a ⚠ note (guard-consistent with movers/holdings) and each finish shows n= obs in window — computed MCP-side from the endpoint's `price_history`/`sibling_printings`. |
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |
-| `lorcana_missing` | Want-list: unowned cards in a set with rarity + price (foil price ✦ for foil-only chase printings — fixed 2026-09-08, was n/a on all Epics/Enchanteds) + $/legal-week where the set has a rotation estimate. |
+| `lorcana_missing` | Want-list: unowned cards in a set with rarity + price (foil price ✦ for foil-only chase printings — fixed 2026-09-08, was n/a on all Epics/Enchanteds) + $/legal-week, optional `rarity` filter, and `deck_need` from wanted-deck shortfalls (needed cards sort first). |
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
 | `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
@@ -1090,6 +1090,7 @@ be dictated conversationally between rounds.
 | `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand (incl. market signals). |
+| `lorcana_price_check` | Batch price check: list of 'set/number' printings (max 20) → one compact line each (both finishes, Δ/CI/mv per finish, owned counts) + one as-of stamp — one call instead of N card lookups. |
 | `lorcana_holdings` | Top owned cards by holding value: per-finish day deltas ($ and unit-%), foil-premium ratio (~1 play-priced, 2+ collector-priced), 30-day liquidity proxy, snapshot as-of stamp — the Grafana Top-20 as text for agents. |
 | `lorcana_movers` | Biggest PERCENT price moves per card+finish over N days (default 7) with a min-price floor (default $1); filters `set_code`/`finish`/`rarity`/`core_legal`/`owned`; each row carries `ci` (now ÷ own 30d avg); suspect ticks excluded; as-of stamped. |
 | `lorcana_rules` | Cite the Comprehensive Rules: free text searches rules + glossary full-text; a rule number ("7.4.3") returns that exact paragraph with parent context and sub-rules. Verbatim text + paragraph numbers, stamped with the CR version, stale-index warning built in. |
@@ -1117,10 +1118,10 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/snapshots?days=` | Collection snapshots (daily + per-import) with breakdowns — the Stats history charts. |
 | `GET /stats/value-history` | Collection value at each daily price snapshot. |
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
-| `GET /missing?set=` | Unowned cards in a set, with both finish prices and `legal_weeks_left` (from `rotation_est`). |
+| `GET /missing?set=&rarity=` | Unowned cards in a set, with both finish prices, `legal_weeks_left`, and `deck_need` (wanted-deck shortfall copies). |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
 | `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `ci_*` (now ÷ own 30d avg), `moves_*_30d` liquidity proxy; suspect ticks excluded (cap 100). |
-| `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci`; suspect ticks excluded. |
+| `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci` + `n_obs_30d`; suspect ticks excluded. |
 | `GET /rules/meta` | Loaded CR version, effective date, counts, `possibly_stale` verdict. |
 | `GET /rules/search?q=` | CR full-text search (rules + glossary, websearch syntax); a rule-number `q` returns that paragraph as `exact` with context/children. |
 | `GET /rules/{key}` | One CR paragraph by number with parent chain + immediate sub-rules. |

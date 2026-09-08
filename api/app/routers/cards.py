@@ -158,7 +158,8 @@ def card_detail(set_code: str, number: str):
                   submitted_at, graded_at, notes
            FROM graded_copies WHERE card_id = %s ORDER BY id""", (row["id"],))
     row["price_history"] = db.query(
-        """SELECT captured_at, usd, usd_foil FROM price_history
+        """SELECT captured_at, usd, usd_foil, suspect_normal, suspect_foil
+           FROM price_history
            WHERE card_id = %s ORDER BY captured_at""",
         (row["id"],),
     )

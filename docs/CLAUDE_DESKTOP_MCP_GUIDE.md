@@ -48,6 +48,9 @@ a deck is `/decks/{id}`).
   stat), `owned` (all|owned|missing), `sim` (playable|unplayable = engine
   coverage). Lines end "sim ✓/✗".
 - `lorcana_card` — one card's full detail by set + number.
+- `lorcana_price_check(["13/97", "13/99", ...]) ` — batch price lines
+  (max 20) in ONE call: both finishes with Δ/CI/mv each, owned counts,
+  one as-of stamp. Use it whenever you need prices for 2+ cards.
 - `lorcana_rules` — Comprehensive Rules citations. Free text ("bodyguard
   challenge") searches rules + glossary; a rule number ("7.4.3") returns
   that paragraph with parent context and sub-rules. Output is stamped with
@@ -140,6 +143,22 @@ a deck is `/decks/{id}`).
   `recent_anomalies`, `threat_sweep`, `udm_threats` etc. — security
   monitoring; `notify` — push a message to Jason's phone (use sparingly,
   when he asks); `ask_odin` — the local analyst model.
+
+## Canonical set table (agents keep drifting on names — this is the truth)
+
+| # | Name | Released | Core rotation (est.) |
+|---|---|---|---|
+| 9 | Fabled | 2025-08-29 | summer 2027 |
+| 10 | Whispers in the Well | 2025-11-07 | summer 2027 |
+| 11 | Winterspell | 2026-02-13 | summer 2027 |
+| 12 | **Wilds Unknown** | 2026-05-08 | summer 2027 |
+| 13 | **Attack of the Vine!** | 2026-07-17 | summer 2028 |
+| 14 | Hyperia City | October 2026 (announced) | — |
+
+Set 12 is Wilds Unknown; set 13 is Attack of the Vine! — NOT the other way
+around (a mislabeling circulated in earlier desktop notes). Sets 1–8 are
+rotated out of Core. The DB (`lorcana_search`, set dropdowns) is always the
+authority; rotation dates are estimates until Ravensburger announces.
 
 ## Conventions Jason relies on
 

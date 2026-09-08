@@ -39,7 +39,7 @@ flowchart LR
             A[lorcana-api<br/>FastAPI :8000<br/>ClusterIP only]
             CJ1[CronJob: price-refresh<br/>nightly 05:00 PT]
             CJ2[CronJob: daily-brief<br/>08:00 PT]
-            CJ3[CronJobs: backup 02:00 · snapshot 06:00 · news 07:30]
+            CJ3[CronJobs: backup 02:00 · asks 05:30 · snapshot 06:00 · news 07:30]
             J1[Job: migrate<br/>run by apply.sh]
             J2[Jobs: seed · rules-seed<br/>manual]
         end
@@ -92,10 +92,10 @@ lorcana/
 │   └── app/
 │       ├── routers/    cards, collection, imports, decks, matchlog (+ duels), stats, sim, brief, market, rules
 │       ├── services/   importer, matching, deck_import, snapshots, brief
-│       ├── jobs/       seed_catalog, refresh_prices, snapshot_collection, fetch_news, daily_brief, seed_rules, lorcast (client)
+│       ├── jobs/       seed_catalog, refresh_prices, fetch_asks, snapshot_collection, fetch_news, daily_brief, seed_rules, lorcast (client)
 │       └── tests/      in-image parser tests (runnable in-pod)
 ├── web/            React 18 + Vite + TypeScript SPA, nginx serving + /api proxy
-├── db/migrations/  000–033 idempotent SQL migrations
+├── db/migrations/  000–036 idempotent SQL migrations
 ├── deploy/         k8s manifests + apply.sh (namespace, secrets, jobs, cronjobs)
 └── docs/           this guide · SIM_ENGINE_HANDOFF.md (cross-session contract)
                     · CLAUDE_DESKTOP_MCP_GUIDE.md (paste into Desktop projects)
@@ -168,12 +168,15 @@ buildah bud --format docker -t localhost:30500/lorcana/web:nginx-YYYYMMDD web/
 buildah push --tls-verify=false localhost:30500/lorcana/web:nginx-YYYYMMDD
 ```
 
-Then set the new tags in the manifests. **The API tag appears in SIX files**
-(the deployment plus every job that runs `python -m app.jobs.*`):
+Then set the new tags in the manifests. **The API tag appears in EIGHT
+files** (the deployment plus every job that runs `python -m app.jobs.*`;
+count grew 2026-09-04/08 — the sim session's release.sh list must match):
 
 - `deploy/api/deployment.yaml`
 - `deploy/jobs/seed-job.yaml`
+- `deploy/jobs/rules-seed-job.yaml`
 - `deploy/jobs/price-refresh-cronjob.yaml`
+- `deploy/jobs/ask-fetch-cronjob.yaml`
 - `deploy/jobs/daily-brief-cronjob.yaml`
 - `deploy/jobs/news-fetch-cronjob.yaml`
 - `deploy/jobs/collection-snapshot-cronjob.yaml`

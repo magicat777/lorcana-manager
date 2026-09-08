@@ -11,6 +11,7 @@ resources:
   - jobs/price-refresh-cronjob.yaml
   - jobs/daily-brief-cronjob.yaml
   - jobs/news-fetch-cronjob.yaml
+  - jobs/ask-fetch-cronjob.yaml
   - jobs/collection-snapshot-cronjob.yaml
   - jobs/db-backup-cronjob.yaml
 

@@ -133,6 +133,44 @@ def list_tags():
     )
 
 
+@router.get("/cards/nicknames")
+def list_nicknames():
+    return db.query(
+        """SELECT n.nick, n.note, s.code AS set_code, c.collector_number,
+                  c.full_name, c.rarity
+           FROM card_nicknames n JOIN cards c ON c.id = n.card_id
+           JOIN sets s ON s.id = c.set_id ORDER BY n.nick""")
+
+
+class NicknameIn(BaseModel):
+    set: str
+    number: str
+    note: str | None = None
+
+
+@router.put("/cards/nicknames/{nick}")
+def put_nickname(nick: str, body: NicknameIn):
+    card = db.query_one(
+        """SELECT c.id, c.full_name FROM cards c JOIN sets s ON s.id = c.set_id
+           WHERE s.code = %s AND c.collector_number = %s""",
+        (body.set, norm_number(body.number)))
+    if not card:
+        raise HTTPException(404, f"no card {body.set}/{body.number}")
+    db.execute(
+        """INSERT INTO card_nicknames (nick, card_id, note) VALUES (%s, %s, %s)
+           ON CONFLICT (nick) DO UPDATE SET card_id = EXCLUDED.card_id,
+             note = EXCLUDED.note""",
+        (nick.strip().upper(), card["id"], body.note))
+    return {"nick": nick.strip().upper(), "full_name": card["full_name"]}
+
+
+@router.delete("/cards/nicknames/{nick}", status_code=204)
+def delete_nickname(nick: str):
+    if db.execute("DELETE FROM card_nicknames WHERE nick = %s",
+                  (nick.strip().upper(),)) == 0:
+        raise HTTPException(404, "no such nickname")
+
+
 @router.get("/cards/{set_code}/{number}")
 def card_detail(set_code: str, number: str):
     row = db.query_one(
@@ -164,6 +202,20 @@ def card_detail(set_code: str, number: str):
         (row["id"],),
     )
     # Every other printing of this card in the same set (Enchanted/Epic chase
+    # latest ask-side row (TCGplayer median listed ask, jobs/fetch_asks.py);
+    # gap = ask sitting well under that source's own market price — the
+    # sales-weighted market figure is stale-high, treat momentum with care
+    ask = db.query_one(
+        """SELECT market_normal, ask_normal, market_foil, ask_foil, fetched_at
+           FROM ask_history WHERE card_id = %s
+           ORDER BY fetched_at DESC LIMIT 1""", (row["id"],))
+    row["ask"] = ask
+    row["ask_gap_normal"] = bool(
+        ask and ask["ask_normal"] and ask["market_normal"]
+        and float(ask["ask_normal"]) < 0.7 * float(ask["market_normal"]))
+    row["ask_gap_foil"] = bool(
+        ask and ask["ask_foil"] and ask["market_foil"]
+        and float(ask["ask_foil"]) < 0.7 * float(ask["market_foil"]))
     rot = db.query_one(
         "SELECT rotation_est, core_legal FROM sets WHERE id = %s", (row["set_id"],))
     row["rotation_est"] = rot["rotation_est"] if rot else None

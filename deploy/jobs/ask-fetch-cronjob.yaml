@@ -1,15 +1,15 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: lorcana-collection-snapshot
+  name: lorcana-ask-fetch
   namespace: lorcana
   labels:
-    app: lorcana-collection-snapshot
+    app: lorcana-ask-fetch
     ai.odin.managed: "true"
-    ai.odin.component: collection-snapshot
+    ai.odin.component: ask-fetch
 spec:
-  schedule: "0 6 * * *"
-  timeZone: America/Los_Angeles   # 06:00 PT daily, after the 05:00 price refresh
+  schedule: "30 5 * * *"
+  timeZone: America/Los_Angeles   # 05:30 PT nightly, after the price refresh
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
@@ -19,21 +19,21 @@ spec:
       template:
         metadata:
           labels:
-            app: lorcana-collection-snapshot
+            app: lorcana-ask-fetch
         spec:
           restartPolicy: Never
           containers:
-            - name: snapshot
+            - name: ask-fetch
               image: localhost:30500/lorcana/api:fastapi-20260908-ask-1
               imagePullPolicy: IfNotPresent
-              command: ["python", "-m", "app.jobs.snapshot_collection"]
+              command: ["python", "-m", "app.jobs.fetch_asks"]
               envFrom:
                 - secretRef:
                     name: lorcana-db
               resources:
                 requests:
-                  cpu: 25m
-                  memory: 96Mi
+                  cpu: 50m
+                  memory: 128Mi
                 limits:
-                  cpu: 250m
-                  memory: 192Mi
+                  cpu: 500m
+                  memory: 256Mi

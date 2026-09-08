@@ -71,6 +71,15 @@ a deck is `/decks/{id}`).
   summer 2028 — estimates until Ravensburger announces). Every price answer
   is stamped "as of <snapshot time>" — check that stamp before quoting
   a price in a buy/sell recommendation; there is no live market feed.
+- `lorcana_nickname` — YOUR shorthand registry: register nicks once
+  (`lorcana_nickname(nick='HAM', card='13/40')`) and they resolve in
+  lorcana_price_check forever. HAM and W&B are seeded; register the
+  rest of your shorthand rather than assuming it exists.
+- Nightly ask feed: card/holdings/movers show TCGplayer's median
+  listed ask beside market; ⚠ask-gap (<0.7x market) means the market
+  price is stale-high — discount momentum reads yourself, CI is never
+  silently adjusted. movers also takes min_ci (momentum screen
+  independent of the price floor).
 - `lorcana_collection_stats`, `lorcana_missing` — totals/completion; unowned
   cards per set.
 - `lorcana_brief` — the daily digest: league nights, news, meta, price

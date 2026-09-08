@@ -79,7 +79,8 @@ def top_holdings(limit: int = 20):
                     WHERE captured_at < date_trunc('day',
                       (SELECT max(captured_at) FROM price_history))
                     ORDER BY card_id, captured_at DESC)
-           SELECT c.full_name, s.code AS set_code, c.collector_number, c.rarity,
+           SELECT c.id AS card_id, c.full_name, s.code AS set_code,
+                  c.collector_number, c.rarity,
                   col.qty_normal, col.qty_foil, c.price_usd, c.price_usd_foil,
                   -- per-price COALESCE inside the product (NULL-price row-drop trap)
                   (col.qty_normal * COALESCE(c.price_usd, 0)
@@ -111,13 +112,26 @@ def top_holdings(limit: int = 20):
            WHERE col.qty_normal + col.qty_foil > 0
            ORDER BY value DESC LIMIT %s""",
         (limit,))
+    asks = {a["card_id"]: a for a in db.query(
+        """SELECT DISTINCT ON (card_id) card_id, market_normal, ask_normal,
+                  market_foil, ask_foil
+           FROM ask_history ORDER BY card_id, fetched_at DESC""")} if rows else {}
+    for r in rows:
+        a = asks.get(r["card_id"])
+        r["ask_gap_normal"] = bool(
+            a and a["ask_normal"] and a["market_normal"]
+            and float(a["ask_normal"]) < 0.7 * float(a["market_normal"]))
+        r["ask_gap_foil"] = bool(
+            a and a["ask_foil"] and a["market_foil"]
+            and float(a["ask_foil"]) < 0.7 * float(a["market_foil"]))
     return {"as_of": _price_as_of(), "rows": rows}
 
 
 @router.get("/market/movers")
 def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
            owned: bool = False, set_code: str = "", finish: str = "",
-           rarity: str = "", core_legal: bool = False, wantlist: bool = False):
+           rarity: str = "", core_legal: bool = False, wantlist: bool = False,
+           min_ci: float = 0):
     """Biggest percent price moves per (card, finish) over the window, with a
     price floor so ten-cent swings on bulk commons don't dominate. Filters:
     `set_code`, `finish` (normal|foil), `rarity`, `core_legal=true`,
@@ -153,13 +167,28 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
                   round(100 * (f.now_price - f.then_price) / f.then_price, 1) AS pct,
                   CASE WHEN f.avg30 > 0 THEN round(f.now_price / f.avg30, 2) END AS ci,
                   COALESCE(f.n_obs_30d, 0) AS n_obs_30d,
+                  CASE WHEN f.finish = 'normal' THEN ask.ask_normal
+                       ELSE ask.ask_foil END AS ask,
+                  CASE WHEN f.finish = 'normal' THEN
+                    (ask.ask_normal IS NOT NULL AND ask.market_normal IS NOT NULL
+                     AND ask.ask_normal < 0.7 * ask.market_normal)
+                  ELSE
+                    (ask.ask_foil IS NOT NULL AND ask.market_foil IS NOT NULL
+                     AND ask.ask_foil < 0.7 * ask.market_foil)
+                  END AS ask_gap,
                   COALESCE(col.qty_normal, 0) AS qty_normal,
                   COALESCE(col.qty_foil, 0) AS qty_foil
            FROM finishes f
            JOIN cards c ON c.id = f.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
+           LEFT JOIN LATERAL (
+             SELECT market_normal, ask_normal, market_foil, ask_foil
+             FROM ask_history ah WHERE ah.card_id = f.card_id
+             ORDER BY fetched_at DESC LIMIT 1) ask ON true
            WHERE f.then_price > 0 AND f.now_price IS NOT NULL
+             AND (%(min_ci)s <= 0 OR
+                  (f.avg30 > 0 AND f.now_price / f.avg30 >= %(min_ci)s))
              -- floor on the LARGER endpoint: a card that rose THROUGH the
              -- floor is exactly what a momentum query must not drop
              AND GREATEST(f.then_price, f.now_price) >= %(min_price)s
@@ -185,7 +214,7 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
            LIMIT %(limit)s""",
         {"days": days, "min_price": min_price, "limit": limit, "owned": owned,
          "set_code": set_code, "finish": finish, "rarity": rarity,
-         "core": core_legal, "wantlist": wantlist})
+         "core": core_legal, "wantlist": wantlist, "min_ci": min_ci})
     return {"as_of": _price_as_of(), "days": days, "min_price": min_price,
             "rows": rows}
 

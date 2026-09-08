@@ -370,3 +370,14 @@ so the columns have provenance):
   filtering, take these as estimates only — they'll be corrected in the
   migration when Ravensburger announces real dates, which is also when
   009's core_legal range gets its scheduled edit.
+
+## Ask feed + nickname registry, and a release.sh heads-up (2026-09-08)
+
+Schema FYIs: `ask_history` (mig 036 — nightly TCGplayer median-ask per
+finish for owned/want-list cards, new 05:30 PT cronjob) and
+`card_nicknames` (agent shorthand registry). Nothing for the engine.
+
+**One thing that DOES affect you: the API image tag now lives in EIGHT
+deploy files** (added `jobs/ask-fetch-cronjob.yaml` and, earlier,
+`jobs/rules-seed-job.yaml` to the six you know). If your release.sh
+carries the file list, add both.

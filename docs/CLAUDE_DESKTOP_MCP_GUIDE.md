@@ -60,7 +60,12 @@ a deck is `/decks/{id}`).
   illiquid, treat the price as stale). `lorcana_card` carries the same
   per-card detail plus 7/30-day percent change and sibling-printing
   prices. `lorcana_movers` ranks percent moves over N days with a
-  min-price floor (owned=True for collection only). Every price answer
+  min-price floor and set_code/finish/rarity/core_legal/owned filters,
+  each row with CI (now ÷ own 30d avg). An ingest outlier guard flags
+  implausible ticks (kept raw, excluded from movers/CI/current price) —
+  Grafana's data-quality panel lists them. Cards on Core sets also show
+  $/legal-week (per-set rotation estimates: 9–12 → summer 2027, 13 →
+  summer 2028 — estimates until Ravensburger announces). Every price answer
   is stamped "as of <snapshot time>" — check that stamp before quoting
   a price in a buy/sell recommendation; there is no live market feed.
 - `lorcana_collection_stats`, `lorcana_missing` — totals/completion; unowned

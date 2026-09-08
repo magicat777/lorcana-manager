@@ -709,6 +709,9 @@ def wantlist():
     rows = db.query(
         f"""SELECT c.id AS card_id, c.full_name, s.code AS set_code,
                   c.collector_number, c.rarity, c.price_usd,
+                  CASE WHEN s.core_legal AND s.rotation_est IS NOT NULL THEN
+                    GREATEST(0, (s.rotation_est - current_date)) / 7
+                  END AS legal_weeks_left,
                   sum(dc.qty) AS qty_wanted,
                   array_agg(DISTINCT d.name ORDER BY d.name) AS decks,
                   GREATEST(0, COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
@@ -723,7 +726,8 @@ def wantlist():
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
-           GROUP BY c.id, c.full_name, s.code, c.collector_number, c.rarity,
+           GROUP BY c.id, c.full_name, s.code, s.core_legal, s.rotation_est,
+                    c.collector_number, c.rarity,
                     c.price_usd, col.qty_normal, col.qty_foil""")
     cards, skipped = [], []
     for r in rows:

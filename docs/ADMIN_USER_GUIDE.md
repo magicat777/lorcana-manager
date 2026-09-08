@@ -121,7 +121,7 @@ lorcana/
 | Manual jobs | `lorcana-seed` (catalog refresh), `lorcana-migrate` (run by apply.sh) |
 | Deploy script | `./deploy/apply.sh` |
 | ntfy topic URL backup | `~/Projects/secrets/lorcana.ntfy.url.s` (never committed) |
-| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`). Branded v16: logo header panel loads `/brand/lorcana-logo-sm.png` from the web pod, gold/parchment styling, official per-ink colors on the pivoted copies-by-ink panel, gold foils line on the size chart (from `total_foil`, mig 031), stacked per-set value timeseries (today's quantities × `price_history`), market signals as a SPLIT pair (mig 032 tables, §6.3): a CI-only timeseries (per-set median, trigger lines at 0.90 dip / 1.10 momentum) beside a sealed-premium bar gauge (latest price ÷ MSRP per SKU; green ≈ MSRP, yellow ≥1.15, red ≥2) — one merged chart failed twice because daily CI lines in 0.85–1.15 and sparse 1.4–6× sealed levels can't share an axis, Top 20 cards by value with colored per-finish `Δ N` / `Δ ✦` columns (each holding's value change between the two latest daily price snapshots, split normal vs foil — a combined Δ let opposite moves cancel invisibly) plus `✦×` foil-premium ratio (purple 2+ = collector-priced), unit-percent `Δ %` columns (scale-free comparisons), and `Mv N`/`Mv ✦` liquidity proxies (nights of the last ~30 the finish's price moved; TCGplayer market price only ticks on sales, so red single digits = illiquid/stale pricing — true sales counts aren't in Lorcast), Fan Content credit footer panel (keep it). JSON in grafana-gitops-live repo; deploy via `kubectl cp -c grafana` to `/var/lib/grafana/dashboards/shared/` (folder configmaps are NOT mounted). |
+| Grafana dashboard | `http://jason-holt-blade-18-rz09-0484.local:31495/d/lorcana-collection/` (grafana-gitops; datasource `postgres-lorcana` via READ-ONLY role `lorcana_grafana`, password in monitoring Secret `grafana-postgres-lorcana-credentials`). Branded v17: logo header panel loads `/brand/lorcana-logo-sm.png` from the web pod, gold/parchment styling, official per-ink colors on the pivoted copies-by-ink panel, gold foils line on the size chart (from `total_foil`, mig 031), stacked per-set value timeseries (today's quantities × `price_history`), market signals as a SPLIT pair (mig 032 tables, §6.3): a CI-only timeseries (per-set median, trigger lines at 0.90 dip / 1.10 momentum) beside a sealed-premium bar gauge (latest price ÷ MSRP per SKU; green ≈ MSRP, yellow ≥1.15, red ≥2) — one merged chart failed twice because daily CI lines in 0.85–1.15 and sparse 1.4–6× sealed levels can't share an axis, Top 20 cards by value with colored per-finish `Δ N` / `Δ ✦` columns (each holding's value change between the two latest daily price snapshots, split normal vs foil — a combined Δ let opposite moves cancel invisibly) plus `✦×` foil-premium ratio (purple 2+ = collector-priced), unit-percent `Δ %` columns (scale-free comparisons), and `Mv N`/`Mv ✦` liquidity proxies (nights of the last ~30 the finish's price moved; TCGplayer market price only ticks on sales, so red single digits = illiquid/stale pricing — true sales counts aren't in Lorcast), price data-quality panel (ticks the §6.1 outlier guard flagged, raw vs kept), 7d Core-sets movers table (finish split + CI — normal outrunning foil = play demand), Fan Content credit footer panel (keep it). JSON in grafana-gitops-live repo; deploy via `kubectl cp -c grafana` to `/var/lib/grafana/dashboards/shared/` (folder configmaps are NOT mounted). |
 
 **Most common operations, one-liners:**
 
@@ -340,6 +340,19 @@ Runs `python -m app.jobs.refresh_prices`. Updates `price_usd`,
 `price_usd_foil`, `legalities`, `raw` on existing cards **and appends one
 `price_history` row per card**. It updates only — a brand-new card is skipped
 until the seed job has inserted it.
+
+**Outlier guard** (2026-09-08): each finish's tick is checked against its
+trailing 7-day median (suspects excluded) and 30-day liquidity. Suspect =
+ratio >10× or <0.1× always, or >2.5× / <0.4× while the card moved <15 of 30
+nights (a LIQUID card moving 2.5× is a real event and passes — e.g. the
+Mickey-foil rally). Suspect ticks are still written to `price_history` (raw,
+append-only truth) with `suspect_normal`/`suspect_foil` flags (mig 034) but
+do NOT update `cards.price_usd*`; movers/CI/deltas skip them; the Grafana
+data-quality panel lists them. Self-healing: after ~a week of a consistent
+new value the clean 7-day window empties (<3 obs) and the new level is
+accepted — a genuine crash is quarantined ~7 days, never lost. First catch:
+P1/4 Cruella foil $1250→$0.25 (5000× product-mapping glitch, flagged
+2026-09-05..08 in mig 034; catalog price restored to the last clean tick).
 
 The brief's *price movers* section needs **at least two** history snapshots per
 card, so it stays empty until the second nightly run after setup. (The first
@@ -612,7 +625,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 
 | Table | Purpose / key columns |
 |---|---|
-| `sets` | Lorcast sets. `code` unique ('1'…'13', 'P1', 'P2', …), `set_num` (Dreamborn match key), **`core_legal`** (our rotation truth, mig 009). |
+| `sets` | Lorcast sets. `code` unique ('1'…'13', 'P1', 'P2', …), `set_num` (Dreamborn match key), **`core_legal`** (our rotation truth, mig 009), `rotation_est` (mig 035 — per-set rotation ESTIMATE driving cost/legal-week and the market ceiling; sets 9–12 → 2027-07-01, 13 → 2028-07-01; edit IN the migration). |
 | `set_aliases` | Normalized Dreamborn set-label → set mapping. Auto-rows from seed + hand rows from mig 002. |
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
@@ -626,7 +639,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 | `matches` / `games` | Per round: opponent, result CHECK ('2-0','2-1','1-2','0-2','1-0','0-1','DRAW','BYE' — single-game results for duels.ink, mig 024), opp inks + shape; per game: play/draw, won, `loss_mode` ('race','board','flood','screw','time','na'). Unique `(event_id, round)`. |
 | `observations` | Attached to a match **xor** an event (CHECK). Kinds: `threat_card`, `tag`, `my_dead_card`, `my_mvp`, `never_drew`, `always_dead`. Feeds the cut list and brief. |
 | `venues` | Stable `slug` (never delete — set `active=false`), display_name, coords (nearest-first sort from home), `event_night`/`event_time` (drives the brief's "tonight"). Seeded with 12 Bay Area stores (mig 006). |
-| `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers, card-detail sparklines, and the market-signal CI. **Known schema gap** (noted 2026-09-08): no per-snapshot observation/sales count — verified Lorcast's payload carries only the price values, so a count column would be permanently NULL; the `mv` nights-moved proxy is the stand-in. Upgrade path if a TCGplayer API key is ever obtained: `cards.tcgplayer_id` (already stored in `raw`) joins to their volume/listing data — add columns to this table then, not before. |
+| `price_history` | Append-only nightly snapshots per card (~3.2k rows/night) (mig 007). Feeds price movers, card-detail sparklines, and the market-signal CI. `suspect_normal`/`suspect_foil` (mig 034) mark outlier-guard flags — see §6.1. **Known schema gap** (noted 2026-09-08): no per-snapshot observation/sales count — verified Lorcast's payload carries only the price values, so a count column would be permanently NULL; the `mv` nights-moved proxy is the stand-in. Upgrade path if a TCGplayer API key is ever obtained: `cards.tcgplayer_id` (already stored in `raw`) joins to their volume/listing data — add columns to this table then, not before. |
 | `cr_paragraphs` / `cr_meta` | Comprehensive Rules index (mig 033): paragraph-numbered rules + section titles + glossary terms with a generated tsvector (GIN) for full-text search; `cr_meta` stamps the loaded CR version/effective date for staleness detection. Loaded/replaced only by the rules-seed job (§6.5b); text is ©Disney — DB-only, never in the repo. |
 | `sealed_products` / `sealed_price_obs` | Market signals (mig 032): sealed SKUs with MSRP + hand-logged price observations (no scrapeable sealed source exists; Lorcast prices singles only). Feeds the brief's Sealed Premium. Two SKU sources: the migration seeds three starters (their MSRPs live IN the migration — `ON CONFLICT` re-applies the file's value every apply.sh, so edit them there), while SKUs added at runtime (`lorcana_sealed_price` with `msrp` — the intended flow) are DB-authoritative and survive re-runs untouched. As of 2026-09-05 every Core set 9–13 has a tracked trove (13 also its booster box). |
 | `news_items` | Official news scraped daily from disneylorcana.com (mig 010). `url` unique; `first_seen_at` drives the brief's NEW flag. |
@@ -1046,9 +1059,9 @@ be dictated conversationally between rounds.
 |---|---|
 | `lorcana_search` | Catalog search (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
 | `lorcana_tags` | All classification tags (Storyborn, Toy, Hunny, …) with catalog counts — the valid `tags` values. |
-| `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta with 7/30-day percent change, 30-day price-movement count (liquidity), foil-premium ratio with a play-vs-collector read, sibling-printing prices, and the snapshot as-of stamp — computed MCP-side from the endpoint's `price_history`/`sibling_printings`. |
+| `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta with 7/30-day percent change, 30-day price-movement count (liquidity), foil-premium ratio with a play-vs-collector read, sibling-printing prices, per-finish CI (now ÷ own 30d avg), Core-legal weeks left with $/legal-week, the set's sealed premium beside CI (the quadrant in one glance), and the snapshot as-of stamp — computed MCP-side from the endpoint's `price_history`/`sibling_printings`. |
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |
-| `lorcana_missing` | Want-list: unowned cards in a set with rarity + price. |
+| `lorcana_missing` | Want-list: unowned cards in a set with rarity + price (foil price ✦ for foil-only chase printings — fixed 2026-09-08, was n/a on all Epics/Enchanteds) + $/legal-week where the set has a rotation estimate. |
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
 | `lorcana_save_deck` | Import a text deck list (idempotent; `overwrite`, `strict` legality mode, `format` constructed/sealed); reports buildability. Never touches collection counts. |
 | `lorcana_deck_pool` | Record opened packs into a sealed deck's pool (add or replace) — dictate your pulls after cracking packs. |
@@ -1074,7 +1087,7 @@ be dictated conversationally between rounds.
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand (incl. market signals). |
 | `lorcana_holdings` | Top owned cards by holding value: per-finish day deltas ($ and unit-%), foil-premium ratio (~1 play-priced, 2+ collector-priced), 30-day liquidity proxy, snapshot as-of stamp — the Grafana Top-20 as text for agents. |
-| `lorcana_movers` | Biggest PERCENT price moves per card+finish over N days (default 7) with a min-price floor (default $1) so penny commons don't dominate; `owned=True` restricts to the collection; as-of stamped. |
+| `lorcana_movers` | Biggest PERCENT price moves per card+finish over N days (default 7) with a min-price floor (default $1); filters `set_code`/`finish`/`rarity`/`core_legal`/`owned`; each row carries `ci` (now ÷ own 30d avg); suspect ticks excluded; as-of stamped. |
 | `lorcana_rules` | Cite the Comprehensive Rules: free text searches rules + glossary full-text; a rule number ("7.4.3") returns that exact paragraph with parent context and sub-rules. Verbatim text + paragraph numbers, stamped with the CR version, stale-index warning built in. |
 | `lorcana_sealed_price` | Sealed price log for the scalper-vs-demand signal: no args lists tracked SKUs with latest premium; `product`+`price` logs an observation ("trove is $88 at Game Kastle"); `msrp` (+`set_code`/`kind`) starts tracking a new SKU. |
 
@@ -1102,8 +1115,8 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
-| `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `moves_*_30d` liquidity proxy (cap 100). |
-| `GET /market/movers?days=&min_price=&limit=&owned=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored (defaults 7d/$1/20). |
+| `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `ci_*` (now ÷ own 30d avg), `moves_*_30d` liquidity proxy; suspect ticks excluded (cap 100). |
+| `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci`; suspect ticks excluded. |
 | `GET /rules/meta` | Loaded CR version, effective date, counts, `possibly_stale` verdict. |
 | `GET /rules/search?q=` | CR full-text search (rules + glossary, websearch syntax); a rule-number `q` returns that paragraph as `exact` with context/children. |
 | `GET /rules/{key}` | One CR paragraph by number with parent chain + immediate sub-rules. |

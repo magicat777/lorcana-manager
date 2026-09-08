@@ -129,7 +129,11 @@ def movers(days: int = 30, limit: int = 10):
 @router.get("/missing")
 def missing(set: str, limit: int = 250):
     return db.query(
-        """SELECT c.full_name, c.collector_number, c.rarity, c.ink, c.price_usd
+        """SELECT c.full_name, c.collector_number, c.rarity, c.ink,
+                  c.price_usd, c.price_usd_foil,
+                  CASE WHEN s.core_legal AND s.rotation_est IS NOT NULL THEN
+                    GREATEST(0, (s.rotation_est - current_date)) / 7
+                  END AS legal_weeks_left
            FROM cards c
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id

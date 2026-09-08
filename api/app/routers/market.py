@@ -56,21 +56,26 @@ def top_holdings(limit: int = 20):
     Mirrors the Grafana Top-20 panel."""
     limit = max(1, min(limit, 100))
     rows = db.query(
-        """WITH moves AS (
+        """WITH ph AS (SELECT card_id, captured_at,
+                              CASE WHEN NOT suspect_normal THEN usd END AS usd,
+                              CASE WHEN NOT suspect_foil THEN usd_foil END AS usd_foil
+                       FROM price_history),
+           moves AS (
              SELECT card_id,
                     count(*) FILTER (WHERE usd IS DISTINCT FROM p_usd) AS mv_n,
-                    count(*) FILTER (WHERE usd_foil IS DISTINCT FROM p_usd_foil) AS mv_f
+                    count(*) FILTER (WHERE usd_foil IS DISTINCT FROM p_usd_foil) AS mv_f,
+                    avg(usd) AS a_n, avg(usd_foil) AS a_f
              FROM (SELECT card_id, usd, usd_foil,
                           lag(usd) OVER w AS p_usd, lag(usd_foil) OVER w AS p_usd_foil,
                           row_number() OVER w AS rn
-                   FROM price_history
+                   FROM ph
                    WHERE captured_at > now() - interval '30 days'
                    WINDOW w AS (PARTITION BY card_id ORDER BY captured_at)) x
              WHERE rn > 1 GROUP BY card_id),
            latest AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
-                      FROM price_history ORDER BY card_id, captured_at DESC),
+                      FROM ph ORDER BY card_id, captured_at DESC),
            prev AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
-                    FROM price_history
+                    FROM ph
                     WHERE captured_at < date_trunc('day',
                       (SELECT max(captured_at) FROM price_history))
                     ORDER BY card_id, captured_at DESC)
@@ -91,6 +96,10 @@ def top_holdings(limit: int = 20):
                     round(100 * (l.usd_foil - p.usd_foil) / p.usd_foil, 1) END AS pct_foil,
                   CASE WHEN COALESCE(c.price_usd, 0) > 0 AND c.price_usd_foil IS NOT NULL THEN
                     round(c.price_usd_foil / c.price_usd, 2) END AS foil_ratio,
+                  CASE WHEN m.a_n > 0 AND l.usd IS NOT NULL THEN
+                    round(l.usd / m.a_n, 2) END AS ci_normal,
+                  CASE WHEN m.a_f > 0 AND l.usd_foil IS NOT NULL THEN
+                    round(l.usd_foil / m.a_f, 2) END AS ci_foil,
                   COALESCE(m.mv_n, 0) AS moves_normal_30d,
                   COALESCE(m.mv_f, 0) AS moves_foil_30d
            FROM collection col
@@ -107,29 +116,41 @@ def top_holdings(limit: int = 20):
 
 @router.get("/market/movers")
 def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
-           owned: bool = False):
-    """Biggest percent price moves per (card, finish) over the window,
-    with a price floor so ten-cent swings on bulk commons don't dominate.
-    `then_price` is the newest snapshot at least `days` old; `owned=true`
-    restricts to collection cards. Stamped with the snapshot `as_of`."""
+           owned: bool = False, set_code: str = "", finish: str = "",
+           rarity: str = "", core_legal: bool = False):
+    """Biggest percent price moves per (card, finish) over the window, with a
+    price floor so ten-cent swings on bulk commons don't dominate. Filters:
+    `set_code`, `finish` (normal|foil), `rarity`, `core_legal=true`,
+    `owned=true`. Suspect ticks (outlier guard) are excluded. Each row
+    carries `ci` (now ÷ trailing 30-day avg). `then_price` is the newest
+    clean snapshot at least `days` old. Stamped with the snapshot `as_of`."""
     days = max(1, min(days, 90))
     limit = max(1, min(limit, 100))
     rows = db.query(
-        """WITH latest AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
-                           FROM price_history ORDER BY card_id, captured_at DESC),
+        """WITH ph AS (SELECT card_id, captured_at,
+                              CASE WHEN NOT suspect_normal THEN usd END AS usd,
+                              CASE WHEN NOT suspect_foil THEN usd_foil END AS usd_foil
+                       FROM price_history),
+           latest AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
+                      FROM ph ORDER BY card_id, captured_at DESC),
            thn AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
-                   FROM price_history
+                   FROM ph
                    WHERE captured_at <= now() - make_interval(days => %(days)s)
                    ORDER BY card_id, captured_at DESC),
+           avg30 AS (SELECT card_id, avg(usd) AS a_n, avg(usd_foil) AS a_f
+                     FROM ph WHERE captured_at > now() - interval '30 days'
+                     GROUP BY card_id),
            finishes AS (
-             SELECT l.card_id, 'normal' AS finish, t.usd AS then_price, l.usd AS now_price
-             FROM latest l JOIN thn t USING (card_id)
+             SELECT l.card_id, 'normal' AS finish, t.usd AS then_price,
+                    l.usd AS now_price, a.a_n AS avg30
+             FROM latest l JOIN thn t USING (card_id) LEFT JOIN avg30 a USING (card_id)
              UNION ALL
-             SELECT l.card_id, 'foil', t.usd_foil, l.usd_foil
-             FROM latest l JOIN thn t USING (card_id))
+             SELECT l.card_id, 'foil', t.usd_foil, l.usd_foil, a.a_f
+             FROM latest l JOIN thn t USING (card_id) LEFT JOIN avg30 a USING (card_id))
            SELECT c.full_name, s.code AS set_code, c.collector_number, c.rarity,
                   f.finish, f.then_price, f.now_price,
                   round(100 * (f.now_price - f.then_price) / f.then_price, 1) AS pct,
+                  CASE WHEN f.avg30 > 0 THEN round(f.now_price / f.avg30, 2) END AS ci,
                   COALESCE(col.qty_normal, 0) AS qty_normal,
                   COALESCE(col.qty_foil, 0) AS qty_foil
            FROM finishes f
@@ -137,11 +158,17 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN collection col ON col.card_id = c.id
            WHERE f.then_price >= %(min_price)s AND f.now_price IS NOT NULL
+             AND (%(set_code)s = '' OR s.code = %(set_code)s)
+             AND (%(finish)s = '' OR f.finish = %(finish)s)
+             AND (%(rarity)s = '' OR c.rarity ILIKE %(rarity)s)
+             AND (NOT %(core)s OR s.core_legal)
              AND (NOT %(owned)s
                   OR COALESCE(col.qty_normal, 0) + COALESCE(col.qty_foil, 0) > 0)
            ORDER BY abs(100 * (f.now_price - f.then_price) / f.then_price) DESC
            LIMIT %(limit)s""",
-        {"days": days, "min_price": min_price, "limit": limit, "owned": owned})
+        {"days": days, "min_price": min_price, "limit": limit, "owned": owned,
+         "set_code": set_code, "finish": finish, "rarity": rarity,
+         "core": core_legal})
     return {"as_of": _price_as_of(), "days": days, "min_price": min_price,
             "rows": rows}
 

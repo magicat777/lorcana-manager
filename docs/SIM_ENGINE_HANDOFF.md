@@ -354,3 +354,19 @@ migration, or endpoint change since the 2026-09-04 note. All five read
 SCALPED (SP 1.4–6.2× MSRP against flat singles CI). Nothing for the
 engine to do; listed so `sealed_products` rows you may see in the DB (or
 market lines in the brief) have a provenance.
+
+## Price-quality + rotation schema additions (2026-09-08)
+
+Two schema FYIs (no engine action; your side never reads this DB, listed
+so the columns have provenance):
+
+- `price_history.suspect_normal/suspect_foil` (mig 034): the nightly price
+  ingest now flags implausible ticks (vs trailing 7-day median, liquidity-
+  aware) — raw values stay, flagged ticks are excluded from current prices,
+  movers, and CI. First catch: a 5000x product-mapping glitch on a promo.
+- `sets.rotation_est` (mig 035): per-set Core-rotation ESTIMATES (9–12 →
+  2027-07-01, together; 13 → 2028-07-01). Drives cost-per-legal-week and
+  the market ceiling. If the engine ever needs rotation dates for format
+  filtering, take these as estimates only — they'll be corrected in the
+  migration when Ravensburger announces real dates, which is also when
+  009's core_legal range gets its scheduled edit.

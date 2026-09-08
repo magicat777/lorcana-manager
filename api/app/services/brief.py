@@ -52,11 +52,11 @@ def _market_signals() -> dict:
              SELECT ph.card_id, avg(ph.usd) AS avg30, count(*) AS n30
              FROM price_history ph JOIN wl ON wl.card_id = ph.card_id
              WHERE ph.captured_at > now() - interval '30 days'
-               AND ph.usd IS NOT NULL
+               AND ph.usd IS NOT NULL AND NOT ph.suspect_normal
              GROUP BY ph.card_id)
            SELECT c.full_name, s.code AS set_code, c.collector_number,
                   c.price_usd, h.avg30, h.n30,
-                  s.core_legal, s.released_at
+                  s.core_legal, s.released_at, s.rotation_est
            FROM wl JOIN cards c ON c.id = wl.card_id
            JOIN sets s ON s.id = c.set_id
            LEFT JOIN hist h ON h.card_id = c.id
@@ -70,10 +70,18 @@ def _market_signals() -> dict:
         ci = round(price / float(r["avg30"]), 3) \
             if r["n30"] and r["n30"] >= MIN_SNAPSHOTS_30D and float(r["avg30"]) > 0 else None
         ceiling = weeks_left = None
-        if r["core_legal"] and r["released_at"]:
-            days = (r["released_at"] - today).days + horizon_days
-            weeks_left = max(0, days // 7)
-            ceiling = round(config.WEEKLY_BUDGET_USD * weeks_left, 2)
+        if r["core_legal"]:
+            # per-set rotation estimate (mig 035) beats the release+horizon
+            # fallback — sets 9-12 rotate together, not two years after release
+            if r["rotation_est"]:
+                days = (r["rotation_est"] - today).days
+            elif r["released_at"]:
+                days = (r["released_at"] - today).days + horizon_days
+            else:
+                days = None
+            if days is not None:
+                weeks_left = max(0, days // 7)
+                ceiling = round(config.WEEKLY_BUDGET_USD * weeks_left, 2)
         trigger = None
         priced = ci is not None and float(r["avg30"]) >= MIN_TRIGGER_PRICE
         if ci is not None and ceiling is not None \

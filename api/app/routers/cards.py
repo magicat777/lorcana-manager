@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -161,6 +163,12 @@ def card_detail(set_code: str, number: str):
         (row["id"],),
     )
     # Every other printing of this card in the same set (Enchanted/Epic chase
+    rot = db.query_one(
+        "SELECT rotation_est, core_legal FROM sets WHERE id = %s", (row["set_id"],))
+    row["rotation_est"] = rot["rotation_est"] if rot else None
+    row["legal_weeks_left"] = (
+        max(0, (rot["rotation_est"] - date.today()).days) // 7
+        if rot and rot["core_legal"] and rot["rotation_est"] else None)
     # variants above the printed range, or the standard print when viewing a
     # chase card) — the detail page charts their nightly prices alongside the
     # viewed printing's, both directions.

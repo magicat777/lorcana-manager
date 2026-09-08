@@ -196,6 +196,28 @@ export default function CardDetail() {
                     <Sparkline points={pts(foil, 'usd_foil')} showRange />
                   </p>
                 )}
+                {(() => {
+                  const all = card.price_history ?? []
+                  const cutoff = Date.now() - 30 * 864e5
+                  const recent = all.filter((h) => new Date(h.captured_at).getTime() >= cutoff)
+                  const mv = (key: 'usd' | 'usd_foil') => {
+                    let m = 0
+                    for (let i = 1; i < recent.length; i++)
+                      if (recent[i][key] !== recent[i - 1][key]) m++
+                    return m
+                  }
+                  if (all.length < 2) return null
+                  const ageH = Math.round((Date.now() - new Date(all[all.length - 1].captured_at).getTime()) / 36e5)
+                  const bits = []
+                  if (hist.length >= 2) bits.push(`normal moved ${mv('usd')}/30 nights`)
+                  if (foil.length >= 2) bits.push(`foil ${mv('usd_foil')}/30`)
+                  return (
+                    <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.78rem' }}
+                      title="Market price only re-computes when sales occur — frequent movement means an active market; under ~5 moves the level is stale and one sale can jump it.">
+                      price confidence: {bits.join(' · ')} · snapshot {ageH}h old
+                    </p>
+                  )
+                })()}
                 {premiums.map((p) => (
                   <p key={`${p.card_id}-${p.key}`} style={{ margin: '0.3rem 0' }}>
                     <span style={{ display: 'inline-block', width: 110 }}>

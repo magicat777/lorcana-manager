@@ -53,6 +53,11 @@ a deck is `/decks/{id}`).
   that paragraph with parent context and sub-rules. Output is stamped with
   the CR version and warns if the index looks stale (a newer set shipped —
   tell Jason to rerun the rules-seed job).
+- `lorcana_holdings` — top owned cards by value with per-finish day deltas
+  and an `mv` liquidity proxy (price-moves per 30 nights; single digits =
+  illiquid, treat the price as stale). `lorcana_card` carries the same
+  per-card detail. Use these when Jason asks how his cards are behaving
+  or whether a price is trustworthy.
 - `lorcana_collection_stats`, `lorcana_missing` — totals/completion; unowned
   cards per set.
 - `lorcana_brief` — the daily digest: league nights, news, meta, price

@@ -39,6 +39,56 @@ def sealed_products():
            ORDER BY p.set_code DESC NULLS LAST, p.name""")
 
 
+@router.get("/market/holdings")
+def top_holdings(limit: int = 20):
+    """Owned cards by holding value with per-finish day deltas and the 30-day
+    liquidity proxy (nights the finish's market price moved — TCGplayer's
+    market price only ticks on sales, so ~15+ = actively traded, single
+    digits = illiquid/stale). Mirrors the Grafana Top-20 panel."""
+    limit = max(1, min(limit, 100))
+    return db.query(
+        """WITH moves AS (
+             SELECT card_id,
+                    count(*) FILTER (WHERE usd IS DISTINCT FROM p_usd) AS mv_n,
+                    count(*) FILTER (WHERE usd_foil IS DISTINCT FROM p_usd_foil) AS mv_f
+             FROM (SELECT card_id, usd, usd_foil,
+                          lag(usd) OVER w AS p_usd, lag(usd_foil) OVER w AS p_usd_foil,
+                          row_number() OVER w AS rn
+                   FROM price_history
+                   WHERE captured_at > now() - interval '30 days'
+                   WINDOW w AS (PARTITION BY card_id ORDER BY captured_at)) x
+             WHERE rn > 1 GROUP BY card_id),
+           latest AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
+                      FROM price_history ORDER BY card_id, captured_at DESC),
+           prev AS (SELECT DISTINCT ON (card_id) card_id, usd, usd_foil
+                    FROM price_history
+                    WHERE captured_at < date_trunc('day',
+                      (SELECT max(captured_at) FROM price_history))
+                    ORDER BY card_id, captured_at DESC)
+           SELECT c.full_name, s.code AS set_code, c.collector_number, c.rarity,
+                  col.qty_normal, col.qty_foil, c.price_usd, c.price_usd_foil,
+                  -- per-price COALESCE inside the product (NULL-price row-drop trap)
+                  (col.qty_normal * COALESCE(c.price_usd, 0)
+                   + col.qty_foil * COALESCE(c.price_usd_foil, 0))::numeric(12,2) AS value,
+                  CASE WHEN p.card_id IS NULL THEN NULL ELSE
+                    (col.qty_normal * (COALESCE(l.usd,0) - COALESCE(p.usd,0)))::numeric(12,2)
+                  END AS delta_normal,
+                  CASE WHEN p.card_id IS NULL THEN NULL ELSE
+                    (col.qty_foil * (COALESCE(l.usd_foil,0) - COALESCE(p.usd_foil,0)))::numeric(12,2)
+                  END AS delta_foil,
+                  COALESCE(m.mv_n, 0) AS moves_normal_30d,
+                  COALESCE(m.mv_f, 0) AS moves_foil_30d
+           FROM collection col
+           JOIN cards c ON c.id = col.card_id
+           JOIN sets s ON s.id = c.set_id
+           LEFT JOIN latest l ON l.card_id = c.id
+           LEFT JOIN prev p ON p.card_id = c.id
+           LEFT JOIN moves m ON m.card_id = c.id
+           WHERE col.qty_normal + col.qty_foil > 0
+           ORDER BY value DESC LIMIT %s""",
+        (limit,))
+
+
 @router.post("/market/sealed", status_code=201)
 def add_sealed_product(body: SealedProductIn):
     row = db.query_one(

@@ -1044,7 +1044,7 @@ be dictated conversationally between rounds.
 |---|---|
 | `lorcana_search` | Catalog search (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
 | `lorcana_tags` | All classification tags (Storyborn, Toy, Hunny, …) with catalog counts — the valid `tags` values. |
-| `lorcana_card` | Full single-card detail by set + collector number. |
+| `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta and 30-day price-movement count (liquidity), computed MCP-side from the endpoint's `price_history`. |
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |
 | `lorcana_missing` | Want-list: unowned cards in a set with rarity + price. |
 | `lorcana_decks` / `lorcana_deck` | List decks / full deck with own-free-allocated per card, legality warnings, buildable verdict. |
@@ -1071,6 +1071,7 @@ be dictated conversationally between rounds.
 | `lorcana_match_stats` | Local meta: ink-pair frequencies, losses, known opponents (filter by store / last N events / `event_type`). |
 | `lorcana_cut_list` | Evidence-based cuts: never-MVP cards ranked by dead mentions, plus proven MVPs. `event_type='sanctioned'` keeps practice bot-game evidence out. |
 | `lorcana_brief` | The daily brief text on demand (incl. market signals). |
+| `lorcana_holdings` | Top owned cards by holding value with per-finish day deltas and the 30-day liquidity proxy (price-moves/30 nights; single digits = illiquid/stale) — the Grafana Top-20 as text for agents. |
 | `lorcana_rules` | Cite the Comprehensive Rules: free text searches rules + glossary full-text; a rule number ("7.4.3") returns that exact paragraph with parent context and sub-rules. Verbatim text + paragraph numbers, stamped with the CR version, stale-index warning built in. |
 | `lorcana_sealed_price` | Sealed price log for the scalper-vs-demand signal: no args lists tracked SKUs with latest premium; `product`+`price` logs an observation ("trove is $88 at Game Kastle"); `msrp` (+`set_code`/`kind`) starts tracking a new SKU. |
 
@@ -1098,6 +1099,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=` | Unowned cards in a set. |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
+| `GET /market/holdings?limit=` | Owned cards by holding value: qty/unit prices per finish, per-finish day deltas, `moves_*_30d` liquidity proxy (cap 100). |
 | `GET /rules/meta` | Loaded CR version, effective date, counts, `possibly_stale` verdict. |
 | `GET /rules/search?q=` | CR full-text search (rules + glossary, websearch syntax); a rule-number `q` returns that paragraph as `exact` with context/children. |
 | `GET /rules/{key}` | One CR paragraph by number with parent chain + immediate sub-rules. |

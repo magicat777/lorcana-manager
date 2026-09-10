@@ -80,6 +80,10 @@ a deck is `/decks/{id}`).
   price is stale-high — discount momentum reads yourself, CI is never
   silently adjusted. movers also takes min_ci (momentum screen
   independent of the price floor).
+- `lorcana_card_audit` — when/why a card's count changed (imports with
+  Jason's notes, manual edits with source). Use it whenever a count
+  looks wrong before suggesting fixes; replace-mode rows mirror what
+  the scan file claimed.
 - `lorcana_collection_stats`, `lorcana_missing` — totals/completion; unowned
   cards per set.
 - `lorcana_brief` — the daily digest: league nights, news, meta, price

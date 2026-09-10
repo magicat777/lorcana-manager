@@ -283,6 +283,18 @@ def run_import(conn, filename: str, data: bytes, mode: str, dry_run: bool, force
              note.strip() or None, Jsonb(diff)),
         )
         import_id = cur.fetchone()["id"]
+        if not dry_run and diff.get("cards"):
+            # per-card audit rows (mig 037) — the migration's backfill skips
+            # imports already logged here, so no double entry
+            cur.executemany(
+                """INSERT INTO collection_log (card_id, source, import_id,
+                     before_normal, before_foil, after_normal, after_foil)
+                   VALUES (%(card_id)s, 'import', %(import_id)s, %(before_normal)s,
+                           %(before_foil)s, %(after_normal)s, %(after_foil)s)""",
+                [{"card_id": c["card_id"], "import_id": import_id,
+                  "before_normal": c["before_normal"], "before_foil": c["before_foil"],
+                  "after_normal": c["after_normal"], "after_foil": c["after_foil"]}
+                 for c in diff["cards"]])
         if not dry_run:
             # Pin a snapshot to the moment the collection changed, so charts
             # show upload jumps at their true timestamp (not the next daily).

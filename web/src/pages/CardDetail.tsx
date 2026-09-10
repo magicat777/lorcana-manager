@@ -7,6 +7,19 @@ import RarityIcon from '../components/RarityIcon'
 import Sparkline from '../components/Sparkline'
 import type { Card } from '../types'
 
+interface CountLogRow {
+  at: string
+  source: string
+  import_id: number | null
+  before_normal: number
+  before_foil: number
+  after_normal: number
+  after_foil: number
+  filename: string | null
+  mode: string | null
+  note: string | null
+}
+
 interface WantListRow {
   id: number
   name: string
@@ -95,6 +108,7 @@ export default function CardDetail() {
   const [card, setCard] = useState<Card | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [countLog, setCountLog] = useState<CountLogRow[] | null>(null)
 
   useEffect(() => {
     get<Card>(`/cards/${set}/${number}`).then(setCard).catch((e) => setError(String(e)))
@@ -263,6 +277,42 @@ export default function CardDetail() {
               <strong>{card.qty_foil}</strong>
               <button className="secondary" disabled={saving} onClick={() => bump('qty_foil', 1)}>+</button>
             </div>
+            {countLog === null ? (
+              <p style={{ margin: '0.4rem 0 0' }}>
+                <a style={{ cursor: 'pointer', fontSize: '0.85rem' }}
+                  onClick={() => get<CountLogRow[]>(`/collection/${card.id}/log`)
+                    .then(setCountLog).catch(() => setCountLog([]))}>
+                  ⏱ count history
+                </a>
+              </p>
+            ) : countLog.length === 0 ? (
+              <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.82rem' }}>
+                No recorded count changes — this count predates the audit trail
+                (2026-08-04) or an untracked pre-2026-09-10 manual edit set it.
+              </p>
+            ) : (
+              <div style={{ margin: '0.4rem 0 0', fontSize: '0.82rem' }}>
+                {countLog.map((l, i) => (
+                  <p key={i} style={{ margin: '0.2rem 0' }}>
+                    <span className="muted">{l.at.slice(0, 16).replace('T', ' ')}</span>{' '}
+                    n {l.before_normal}→{l.after_normal}, ✦ {l.before_foil}→{l.after_foil}
+                    {' · '}
+                    {l.source === 'import' ? (
+                      <span title={l.note ?? ''}>
+                        import #{l.import_id} {l.filename} ({l.mode})
+                        {l.note && <span className="muted"> — {l.note}</span>}
+                      </span>
+                    ) : (
+                      <span>manual edit ({l.source})</span>
+                    )}
+                  </p>
+                ))}
+                <p className="muted" style={{ margin: '0.2rem 0 0' }}>
+                  Replace-mode imports mirror the scan file — a jump there means the
+                  scan claimed that count. History starts 2026-08-04.
+                </p>
+              </div>
+            )}
           </div>
           {(card.graded?.length ?? 0) > 0 && (
             <div className="panel">

@@ -559,7 +559,12 @@ Details that matter:
    replace-scan owns the counts. Prices stay NULL until Lorcast adds the
    set (the nightly price job iterates Lorcast sets, so pickup is automatic
    only if their set code matches — otherwise migrate ids per the mig 038
-   header).
+   header). A promo whose BASE card is unreleased seeds from the card face
+   with `base_card_id` NULL (mig 039, PD1/17 The Beanstalk): mig 038's
+   backfill re-runs every apply.sh, so the link attaches automatically once
+   the base set seeds. **Set-14 day for PD1/17 specifically**: after the
+   seed, confirm the auto-link took, and correct the face-unknowns in mig
+   039 against the published base card (lore, inkwell, body-text glyphs).
 4b. **Rerun the rules-seed job** (§6.5b) once the set's CR update ships —
    Ravensburger publishes it about a week before release, and the news
    watcher's rules signal usually flags the announcement. The Rules

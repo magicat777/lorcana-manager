@@ -552,6 +552,14 @@ Details that matter:
    `unknown set '...'`, add an alias (§7.4).
 4. Prices for the new cards appear after the next nightly price refresh (or run
    it manually, §2).
+4a. **Promo waves Lorcast lacks** (the P4 case, 2026-09-11): follow mig
+   038's pattern — ODIN-authored set + cards mirrored from their base
+   printings with `base_card_id` links, `set_aliases` rows for the
+   Dreamborn label, holdings seeded ON CONFLICT DO NOTHING so the next
+   replace-scan owns the counts. Prices stay NULL until Lorcast adds the
+   set (the nightly price job iterates Lorcast sets, so pickup is automatic
+   only if their set code matches — otherwise migrate ids per the mig 038
+   header).
 4b. **Rerun the rules-seed job** (§6.5b) once the set's CR update ships —
    Ravensburger publishes it about a week before release, and the news
    watcher's rules signal usually flags the announcement. The Rules
@@ -653,6 +661,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 |---|---|
 | `sets` | Lorcast sets. `code` unique ('1'…'13', 'P1', 'P2', …), `set_num` (Dreamborn match key), **`core_legal`** (our rotation truth, mig 009), `rotation_est` (mig 035 — per-set rotation ESTIMATE driving cost/legal-week and the market ceiling; sets 9–12 → 2027-07-01, 13 → 2028-07-01; edit IN the migration). |
 | `set_aliases` | Normalized Dreamborn set-label → set mapping. Auto-rows from seed + hand rows from mig 002. |
+| `cards.base_card_id` | Promo→base link (mig 038): ODIN-authored promo rows (ids `odin_*` — Lorcast has no P4) mirror their base printing and link to it; backfilled across every promo set where exactly one main-set name-match exists (ambiguous stay NULL). **Buildability counts by printing GROUP** (`group_avail_sql()` in cards.py): deck own/free/allocated/slabbed and both want-list shortfall paths sum base + linked promos — a P4 Morph is a Morph for the 4-copy rule. Display counts (grid, card detail, stats) stay per-printing for collection fidelity. Deck matching and `find_card_printings` prefer base printings. If Lorcast later adds P4, migrate counts from the `odin_*` rows to the Lorcast `crd_*` rows and retire ours (mig 038 header). |
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
 | `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary — plus `note` (annotate uploads, e.g. "sealed winnings") and `diff` (per-card before→after, mig 019). |
@@ -1091,7 +1100,7 @@ be dictated conversationally between rounds.
 
 | Tool | What it does |
 |---|---|
-| `lorcana_search` | Catalog search (foil ✦ price fallback on chase printings, 2026-09-08) (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
+| `lorcana_search` | Catalog search (foil ✦ price fallback on chase printings, 2026-09-08; promo rows print `(promo of 13/57)`) (name/rules text, set, ink, rarity, tags = classification multi-filter, lore, owned filter) with stats, price, owned counts per line. |
 | `lorcana_tags` | All classification tags (Storyborn, Toy, Hunny, …) with catalog counts — the valid `tags` values. |
 | `lorcana_card` | Full single-card detail by set + collector number — incl. per-finish day delta with 7/30-day percent change, 30-day price-movement count (liquidity), foil-premium ratio with a play-vs-collector read, sibling-printing prices, per-finish CI (now ÷ own 30d avg), Core-legal weeks left with $/legal-week, the set's sealed premium beside CI (the quadrant in one glance), and the snapshot as-of stamp; suspect ticks are excluded from Δ/CI/liquidity with a ⚠ note (guard-consistent with movers/holdings) and each finish shows n= obs in window — computed MCP-side from the endpoint's `price_history`/`sibling_printings`. |
 | `lorcana_collection_stats` | Collection totals + per-set completion/playsets/value. |

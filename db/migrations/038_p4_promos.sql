@@ -49,6 +49,22 @@ JOIN sets bs ON bs.code = v.base_set
 JOIN cards b ON b.set_id = bs.id AND b.collector_number = v.base_num
 ON CONFLICT (id) DO NOTHING;
 
+-- Promo alt-art images (2026-09-11): Lorcast has none; these hotlink
+-- Dreamborn's CDN (single webp per printing — all three size columns get
+-- the same URL). Same discipline as other external sources: if the CDN
+-- breaks or 403s, the pages degrade to no image — fix or null the URLs
+-- here, never add scraping tricks. Enforced on every re-run (catalog data,
+-- unlike the counts above which scans own).
+UPDATE cards SET
+  image_small = v.url, image_normal = v.url, image_large = v.url,
+  updated_at = now()
+FROM (VALUES
+  ('odin_p4_9',  'https://cdn.dreamborn.ink/images/en/cards/P4/62cf93fd2bf73b3f3244f0871427b591c0533448'),
+  ('odin_p4_10', 'https://cdn.dreamborn.ink/images/en/cards/P4/4dd4c6ed3c045f9170e15608a5c80adb2e44683f'),
+  ('odin_p4_11', 'https://cdn.dreamborn.ink/images/en/cards/P4/d4c383c9e55d4b4a09eec61e4350ff24b26563f3')
+) AS v(id, url)
+WHERE cards.id = v.id AND cards.image_normal IS DISTINCT FROM v.url;
+
 -- Backfill base links for EXISTING promo-set rows (set_num IS NULL) that
 -- match exactly one main-set printing by full name — this is what makes
 -- group-counted buildability cover P1/P2/P3/PD1/D23 promos too. Ambiguous

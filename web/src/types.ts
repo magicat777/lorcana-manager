@@ -37,6 +37,7 @@ export interface Card {
   price_history?: { captured_at: string; usd: string | number | null; usd_foil: string | number | null }[]
   sibling_printings?: {
     card_id: string
+    set_code: string
     collector_number: string
     rarity: string
     price_usd: string | number | null

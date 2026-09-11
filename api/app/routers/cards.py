@@ -16,6 +16,37 @@ def slabbed_count_sql(col: str) -> str:
             f"{col} AND g.status IN ('submitted','graded')), 0)")
 
 
+def group_avail_sql(cards_alias: str) -> dict:
+    """Buildability counts across a card's PRINTING GROUP — the base printing
+    plus every row whose base_card_id points to it (promos, mig 038): a P4
+    Morph is a Morph for the 4-copy rule. Group key both sides:
+    COALESCE(base_card_id, id). Display counts elsewhere (grid, card detail
+    qty_normal/qty_foil, stats) stay per-printing — collection fidelity.
+    `cards_alias` is the cards-table alias of the row being evaluated."""
+    key = f"COALESCE({cards_alias}.base_card_id, {cards_alias}.id)"
+    return {
+        "owned": ("COALESCE((SELECT sum(col2.qty_normal + col2.qty_foil) "
+                  "FROM collection col2 JOIN cards cg ON cg.id = col2.card_id "
+                  f"WHERE COALESCE(cg.base_card_id, cg.id) = {key}), 0)"),
+        "allocated": ("COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2 "
+                      "JOIN decks d2 ON d2.id = dc2.deck_id "
+                      "JOIN cards cg ON cg.id = dc2.card_id "
+                      f"WHERE COALESCE(cg.base_card_id, cg.id) = {key} "
+                      "AND d2.in_use AND d2.format = 'constructed'), 0)"),
+        # same, excluding one deck (deck-detail's "allocated elsewhere")
+        "allocated_excl": ("COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2 "
+                           "JOIN decks d2 ON d2.id = dc2.deck_id "
+                           "JOIN cards cg ON cg.id = dc2.card_id "
+                           f"WHERE COALESCE(cg.base_card_id, cg.id) = {key} "
+                           "AND d2.in_use AND d2.format = 'constructed' "
+                           "AND d2.id <> {excl}), 0)"),
+        "slabbed": ("COALESCE((SELECT count(*) FROM graded_copies g "
+                    "JOIN cards cg ON cg.id = g.card_id "
+                    f"WHERE COALESCE(cg.base_card_id, cg.id) = {key} "
+                    "AND g.status IN ('submitted','graded')), 0)"),
+    }
+
+
 def find_card_printings(name: str) -> list[dict]:
     """All printings matching a card name, standard rarities first, newest
     first — the single disambiguation heuristic shared by want lists and
@@ -25,6 +56,7 @@ def find_card_printings(name: str) -> list[dict]:
            FROM cards c JOIN sets s ON s.id = c.set_id
            WHERE lower(c.full_name) = lower(%s) OR lower(c.name) = lower(%s)
            ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic')),
+                    (c.base_card_id IS NOT NULL),
                     s.released_at DESC NULLS LAST""",
         (name.strip(), name.strip()))
 
@@ -33,6 +65,9 @@ CARD_COLS = """c.id, c.set_id, s.code AS set_code, s.name AS set_name, s.core_le
   c.name, c.version, c.full_name, c.ink, c.inks, c.cost, c.inkwell, c.type, c.classifications,
   c.keywords, c.body_text, c.flavor_text, c.strength, c.willpower, c.lore, c.move_cost,
   c.rarity, c.image_small, c.image_normal, c.image_large, c.price_usd, c.price_usd_foil,
+  c.base_card_id,
+  (SELECT s2.code || '/' || b.collector_number FROM cards b
+     JOIN sets s2 ON s2.id = b.set_id WHERE b.id = c.base_card_id) AS promo_of,
   COALESCE(col.qty_normal, 0) AS qty_normal, COALESCE(col.qty_foil, 0) AS qty_foil,
   COALESCE((SELECT sum(dc.qty) FROM deck_cards dc JOIN decks d ON d.id = dc.deck_id
             WHERE dc.card_id = c.id AND d.in_use
@@ -225,19 +260,27 @@ def card_detail(set_code: str, number: str):
     # variants above the printed range, or the standard print when viewing a
     # chase card) — the detail page charts their nightly prices alongside the
     # viewed printing's, both directions.
+    # Same-set printings (chase variants) PLUS cross-set base-linked rows
+    # (mig 038 promos): a promo page shows its base card, a base page its
+    # promos — the set code matters now, so it's part of each row.
     row["sibling_printings"] = db.query(
-        r"""SELECT c2.id AS card_id, c2.collector_number, c2.rarity,
-                  c2.price_usd, c2.price_usd_foil,
+        r"""SELECT c2.id AS card_id, s2.code AS set_code, c2.collector_number,
+                  c2.rarity, c2.price_usd, c2.price_usd_foil,
                   COALESCE((SELECT json_agg(json_build_object(
                         'captured_at', ph.captured_at,
                         'usd', ph.usd, 'usd_foil', ph.usd_foil)
                       ORDER BY ph.captured_at)
                     FROM price_history ph WHERE ph.card_id = c2.id),
                     '[]'::json) AS price_history
-           FROM cards c2
-           WHERE c2.set_id = %s AND c2.full_name = %s AND c2.id <> %s
-           ORDER BY NULLIF(regexp_replace(c2.collector_number,'\D','','g'),'')::int NULLS LAST""",
-        (row["set_id"], row["full_name"], row["id"]),
+           FROM cards c2 JOIN sets s2 ON s2.id = c2.set_id
+           WHERE c2.id <> %(id)s
+             AND ((c2.set_id = %(set_id)s AND c2.full_name = %(full_name)s)
+                  OR c2.base_card_id = %(id)s
+                  OR c2.id = COALESCE(%(base_id)s::text, ''))
+           ORDER BY (s2.set_num IS NULL),
+                    NULLIF(regexp_replace(c2.collector_number,'\D','','g'),'')::int NULLS LAST""",
+        {"id": row["id"], "set_id": row["set_id"], "full_name": row["full_name"],
+         "base_id": row.get("base_card_id")},
     )
     return row
 

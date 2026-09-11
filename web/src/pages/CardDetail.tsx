@@ -235,8 +235,8 @@ export default function CardDetail() {
                 {premiums.map((p) => (
                   <p key={`${p.card_id}-${p.key}`} style={{ margin: '0.3rem 0' }}>
                     <span style={{ display: 'inline-block', width: 110 }}>
-                      <Link to={`/cards/${card.set_code}/${p.collector_number}`}
-                        title={`${p.rarity} printing #${p.collector_number}`}>
+                      <Link to={`/cards/${p.set_code ?? card.set_code}/${p.collector_number}`}
+                        title={`${p.rarity} printing ${p.set_code ?? card.set_code}/${p.collector_number}`}>
                         {p.rarity}{p.key === 'usd_foil' ? ' ✦' : ''}
                       </Link>
                     </span>

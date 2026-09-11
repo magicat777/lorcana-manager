@@ -7,10 +7,14 @@ from pydantic import BaseModel, Field
 
 from .. import db
 from ..services import deck_import
-from .cards import find_card_printings, slabbed_count_sql
+from .cards import find_card_printings, group_avail_sql, slabbed_count_sql
 
 _SLABBED_DC = slabbed_count_sql("dc.card_id")
 _SLABBED_C = slabbed_count_sql("c.id")
+# Group-aware availability (mig 038): promos count toward their base card's
+# buildability. Display counts stay per-printing; these feed own/free math.
+_GA = group_avail_sql("c")
+_GA_EXCL = _GA["allocated_excl"].format(excl="dc.deck_id")
 
 router = APIRouter()
 
@@ -123,13 +127,9 @@ def _deck_row(deck_id: int) -> dict:
                   c.inkwell, c.legalities, c.strength, c.willpower, c.lore, c.classifications,
                   s.code AS set_code, s.core_legal, c.collector_number, c.image_small,
                   (ec.card_id IS NOT NULL) AS sim_playable,
-                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned,
-                  COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
-                            JOIN decks d2 ON d2.id = dc2.deck_id
-                            WHERE dc2.card_id = dc.card_id AND d2.in_use
-                              AND d2.format = 'constructed'
-                              AND d2.id <> dc.deck_id), 0) AS allocated_elsewhere,
-                  {_SLABBED_DC} AS slabbed
+                  {_GA['owned']} AS owned,
+                  {_GA_EXCL} AS allocated_elsewhere,
+                  {_GA['slabbed']} AS slabbed
            FROM deck_cards dc
            JOIN cards c ON c.id = dc.card_id
            JOIN sets s ON s.id = c.set_id
@@ -714,12 +714,8 @@ def wantlist():
                   END AS legal_weeks_left,
                   sum(dc.qty) AS qty_wanted,
                   array_agg(DISTINCT d.name ORDER BY d.name) AS decks,
-                  GREATEST(0, COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
-                    - {_SLABBED_C}) AS owned,
-                  COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
-                            JOIN decks d2 ON d2.id = dc2.deck_id
-                            WHERE dc2.card_id = c.id AND d2.in_use
-                              AND d2.format = 'constructed'), 0) AS allocated
+                  GREATEST(0, {_GA['owned']} - {_GA['slabbed']}) AS owned,
+                  {_GA['allocated']} AS allocated
            FROM deck_cards dc
            JOIN decks d ON d.id = dc.deck_id
              AND d.wanted AND NOT d.in_use AND NOT d.sim_only AND d.format = 'constructed'
@@ -849,13 +845,8 @@ def _wantlist_items(wl: dict) -> list[dict]:
         for r in db.query(
                 f"""SELECT c.id AS card_id, c.full_name, s.code AS set_code, c.set_id,
                           c.collector_number, c.rarity, c.price_usd, dc.qty AS qty_wanted,
-                          GREATEST(0, COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0)
-                            - {_SLABBED_C}) AS owned,
-                          COALESCE((SELECT sum(dc2.qty) FROM deck_cards dc2
-                                    JOIN decks d2 ON d2.id = dc2.deck_id
-                                    WHERE dc2.card_id = c.id AND d2.in_use
-                                      AND d2.format = 'constructed'
-                                      AND d2.id <> %s), 0) AS allocated
+                          GREATEST(0, {_GA['owned']} - {_GA['slabbed']}) AS owned,
+                          {_GA['allocated_excl'].format(excl='%s')} AS allocated
                    FROM deck_cards dc
                    JOIN cards c ON c.id = dc.card_id
                    JOIN sets s ON s.id = c.set_id

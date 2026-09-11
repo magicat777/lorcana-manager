@@ -399,3 +399,21 @@ jobs/collection-snapshot-cronjob.yaml
 (`jobs/rules-seed-job.yaml` was added 2026-09-04, `jobs/ask-fetch-cronjob.yaml`
 2026-09-08; `db-backup-cronjob.yaml` stays on the odin-prime postgres image
 and never carries the API tag.)
+
+## ODIN-authored catalog rows — card ids are not all Lorcast's (2026-09-11)
+
+Per docs/"ODIN_P4_promo_catalog_handoff (1).md": Lorcast has no P4 promo
+set, so the catalog now contains ODIN-authored rows — set `P4`
+(id `set_odin_p4`) and cards with ids `odin_p4_9/10/11` (mig 038),
+mirrored from base printings 13/57, 13/7, 13/153 and linked via the new
+`cards.base_card_id` column (backfilled across all promo sets).
+
+What matters to the engine side:
+- **Never assume card ids match `crd_*`** — `odin_*` ids now exist. Your
+  engine reads checked-in snapshots so nothing breaks, but any tooling that
+  joins this DB's card ids against Lorcast data should skip `odin_*` rows.
+- Deck buildability now counts by printing group (base + linked promos);
+  decks still reference base printings, and deck-import matching prefers
+  base — so deck lists and sim inputs are unchanged.
+- Promo rows have no engine_coverage (sim ✗) — correct, they never appear
+  in deck lists.

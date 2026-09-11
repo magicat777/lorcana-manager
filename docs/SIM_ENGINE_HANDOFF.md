@@ -417,3 +417,12 @@ What matters to the engine side:
   base — so deck lists and sim inputs are unchanged.
 - Promo rows have no engine_coverage (sim ✗) — correct, they never appear
   in deck lists.
+- **Base-only deck rows are now ENFORCED, not just preferred** (2026-09-11,
+  after your note that the engine's int(set_code) cast makes a promo deck
+  row a hard error): the deck-write funnel (`_write_cards`) normalizes any
+  base-linked card_id to its base printing, merging quantities — covering
+  webui manual adds, imports, clones, and restores alike. A one-time audit
+  found and repointed one existing offender (sim-only deck #30 held 3x
+  Lilo - Escape Artist as P2/25). If you ever see a non-int set code reach
+  the engine again, that's a bug on our side — report it, don't work
+  around it in snapshot_decks.py.

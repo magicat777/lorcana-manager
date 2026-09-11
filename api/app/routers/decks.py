@@ -176,12 +176,29 @@ def _deck_row(deck_id: int) -> dict:
 
 
 def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
+    """Single write funnel for deck lists. Promo printings are normalized to
+    their base card (mig 038): a deck row must NEVER reference a promo —
+    beyond convention, it's load-bearing for the sim engine, which keys
+    cards by int(set_code) and errors on 'P4'/'PD1' (sim session,
+    2026-09-11). Buildability counts the promo copies via the group
+    anyway, so nothing is lost by normalizing. Merges qty on collision."""
     with conn.cursor() as cur:
         cur.execute("DELETE FROM deck_cards WHERE deck_id=%s", (deck_id,))
+        ids = [c.card_id for c in cards]
+        base_map = {}
+        if ids:
+            cur.execute(
+                "SELECT id, base_card_id FROM cards WHERE id = ANY(%s) "
+                "AND base_card_id IS NOT NULL", (ids,))
+            base_map = {r["id"]: r["base_card_id"] for r in cur.fetchall()}
+        merged: dict[str, int] = {}
         for c in cards:
+            cid = base_map.get(c.card_id, c.card_id)
+            merged[cid] = merged.get(cid, 0) + c.qty
+        for cid, qty in merged.items():
             cur.execute(
                 "INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (%s,%s,%s)",
-                (deck_id, c.card_id, c.qty),
+                (deck_id, cid, qty),
             )
 
 

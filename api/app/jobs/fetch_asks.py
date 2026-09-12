@@ -77,6 +77,29 @@ def main() -> int:
                     errors += 1
                     if errors <= 5:
                         print(f"  error on {t['id']}: {e}", flush=True)
+        # Sealed pass (mig 040): SKUs with a tcgplayer_id get a nightly
+        # market-price observation — the SP gauge/series move daily instead
+        # of only when a price is hand-logged. Same endpoint, same removal
+        # rule. SKUs without ids stay manual-only.
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, name, tcgplayer_id FROM sealed_products
+                           WHERE active AND tcgplayer_id IS NOT NULL""")
+            for sp in cur.fetchall():
+                time.sleep(DELAY_S)
+                try:
+                    r = client.get(MPAPI.format(tid=sp["tcgplayer_id"]))
+                    r.raise_for_status()
+                    mkt = next((p.get("marketPrice") for p in r.json()
+                                if p.get("printingType") == "Normal"), None)
+                    if mkt is not None and float(mkt) > 0:
+                        cur.execute(
+                            """INSERT INTO sealed_price_obs (product_id, price, source)
+                               VALUES (%s, %s, 'tcgplayer-auto')""",
+                            (sp["id"], mkt))
+                        print(f"  sealed: {sp['name']} ${mkt}", flush=True)
+                except Exception as e:
+                    errors += 1
+                    print(f"  sealed error on {sp['name']}: {e}", flush=True)
         if targets and errors > len(targets) * 0.2:
             print(f"[LORE] ask fetch failing broadly ({errors}/{len(targets)}) — "
                   "endpoint shape may have changed; investigate or remove the job.",

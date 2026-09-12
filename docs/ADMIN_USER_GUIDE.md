@@ -492,7 +492,12 @@ holdings, and movers (the flag ANNOTATES — CI is never silently altered).
 The endpoint is UNDOCUMENTED: per the news-source rule, if it 403s or
 changes shape the job exits loudly with instructions to REMOVE it — never
 add auth/browser tricks. First run caught two real gaps (Zeus 10/193 foil
-ask 0.43× market).
+ask 0.43× market). Since 2026-09-12 the job also fetches each sealed SKU
+with a `tcgplayer_id` (mig 040 — ids live IN the migration; add new SKUs'
+ids there when TCGplayer lists them) into `sealed_price_obs` as
+`tcgplayer-auto`, so sealed premiums move nightly. `lorcana_sealed_price`
+hand-logging remains for unlisted SKUs (Hyperia pre-orders) and
+spotted-in-store prices.
 
 ### 6.5b Job: `lorcana-rules-seed` — on demand
 

@@ -100,6 +100,36 @@ def main() -> int:
                 except Exception as e:
                     errors += 1
                     print(f"  sealed error on {sp['name']}: {e}", flush=True)
+        # Cross-TCG benchmark pass (mig 041): sealed benchmarks via the same
+        # mpapi endpoint; publisher equities via Yahoo's chart JSON (keyless;
+        # stooq was tried first and is JS-walled). Same removal-over-tricks
+        # rule for both. One observation per benchmark per night.
+        with conn.cursor() as cur:
+            cur.execute("""SELECT id, kind, label, tcgplayer_id, ticker
+                           FROM market_benchmarks WHERE active""")
+            for b in cur.fetchall():
+                time.sleep(DELAY_S)
+                try:
+                    if b["kind"] == "sealed":
+                        r = client.get(MPAPI.format(tid=b["tcgplayer_id"]))
+                        r.raise_for_status()
+                        price = next((p.get("marketPrice") for p in r.json()
+                                      if p.get("printingType") == "Normal"), None)
+                    else:
+                        r = client.get(
+                            "https://query1.finance.yahoo.com/v8/finance/chart/"
+                            f"{b['ticker']}?range=1d&interval=1d")
+                        r.raise_for_status()
+                        price = r.json()["chart"]["result"][0]["meta"].get(
+                            "regularMarketPrice")
+                    if price is not None and float(price) > 0:
+                        cur.execute(
+                            """INSERT INTO market_benchmark_obs (benchmark_id, price)
+                               VALUES (%s, %s)""", (b["id"], price))
+                        print(f"  benchmark: {b['label']} {price}", flush=True)
+                except Exception as e:
+                    errors += 1
+                    print(f"  benchmark error on {b['label']}: {e}", flush=True)
         if targets and errors > len(targets) * 0.2:
             print(f"[LORE] ask fetch failing broadly ({errors}/{len(targets)}) — "
                   "endpoint shape may have changed; investigate or remove the job.",

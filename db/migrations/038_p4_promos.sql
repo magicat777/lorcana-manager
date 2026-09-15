@@ -66,9 +66,12 @@ FROM (VALUES
 WHERE cards.id = v.id AND cards.image_normal IS DISTINCT FROM v.url;
 
 -- Backfill base links for EXISTING promo-set rows (set_num IS NULL) that
--- match exactly one main-set printing by full name — this is what makes
--- group-counted buildability cover P1/P2/P3/PD1/D23 promos too. Ambiguous
--- names (0 or 2+ main-set matches) stay NULL, deliberately.
+-- match exactly one STANDARD main-set printing by full name — this is what
+-- makes group-counted buildability cover P1/P2/P3/PD1/D23 promos too.
+-- Chase printings (Enchanted/Epic/Iconic/Illustrious) are excluded from
+-- the match pool (2026-09-15: Elsa 22/P3 stayed unlinked because 10/45
+-- Common + 10/208 Epic counted as "ambiguous" — the base is always the
+-- standard print). Still-ambiguous names stay NULL, deliberately.
 UPDATE cards p SET base_card_id = m.base_id
 FROM (
   SELECT p2.id AS promo_id,
@@ -76,6 +79,8 @@ FROM (
   FROM cards p2
   JOIN sets ps ON ps.id = p2.set_id AND ps.set_num IS NULL
   JOIN cards b ON lower(b.full_name) = lower(p2.full_name) AND b.id <> p2.id
+    AND (b.rarity IS NULL
+         OR b.rarity NOT IN ('Enchanted','Epic','Iconic','Illustrious'))
   JOIN sets bsx ON bsx.id = b.set_id AND bsx.set_num IS NOT NULL
   WHERE p2.base_card_id IS NULL
   GROUP BY p2.id

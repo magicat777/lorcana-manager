@@ -55,6 +55,17 @@ class Matcher:
         card_id = self.by_number.get((set_id, norm_number(number)))
         if card_id:
             return card_id, None
+        # Dreamborn files promo printings under the BASE set with a compound
+        # number: set '010', number '22/P3' means promo set P3, collector 22
+        # (found 2026-09-15 when 4x Elsa 22/P3 rejected as ambiguous-in-set-10).
+        # The set part of such a row is ignored in favor of the suffix.
+        m = str(number).strip().split("/")
+        if len(m) == 2:
+            promo_set = self.resolve_set(m[1])
+            if promo_set:
+                card_id = self.by_number.get((promo_set, norm_number(m[0])))
+                if card_id:
+                    return card_id, None
         n = str(name).strip().lower()
         if n:
             for table in (self.by_full, self.by_name):

@@ -678,7 +678,7 @@ irreplaceable data is `collection`, `decks`/`deck_cards`, the match log
 |---|---|
 | `sets` | Lorcast sets. `code` unique ('1'…'13', 'P1', 'P2', …), `set_num` (Dreamborn match key), **`core_legal`** (our rotation truth, mig 009), `rotation_est` (mig 035 — per-set rotation ESTIMATE driving cost/legal-week and the market ceiling; sets 9–12 → 2027-07-01, 13 → 2028-07-01; edit IN the migration). |
 | `set_aliases` | Normalized Dreamborn set-label → set mapping. Auto-rows from seed + hand rows from mig 002. |
-| `cards.base_card_id` | Promo→base link (mig 038): ODIN-authored promo rows (ids `odin_*` — Lorcast has no P4) mirror their base printing and link to it; backfilled across every promo set where exactly one main-set name-match exists (ambiguous stay NULL). **Buildability counts by printing GROUP** (`group_avail_sql()` in cards.py): deck own/free/allocated/slabbed and both want-list shortfall paths sum base + linked promos — a P4 Morph is a Morph for the 4-copy rule. Display counts (grid, card detail, stats) stay per-printing for collection fidelity. Deck matching and `find_card_printings` prefer base printings. If Lorcast later adds P4, migrate counts from the `odin_*` rows to the Lorcast `crd_*` rows and retire ours (mig 038 header). |
+| `cards.base_card_id` | Promo→base link (mig 038): ODIN-authored promo rows (ids `odin_*` — Lorcast has no P4) mirror their base printing and link to it; backfilled across every promo set where exactly one STANDARD main-set name-match exists — chase printings are excluded from the match pool since 2026-09-15 (a Common + an Epic of the same name no longer count as ambiguous); still-ambiguous names stay NULL. **Buildability counts by printing GROUP** (`group_avail_sql()` in cards.py): deck own/free/allocated/slabbed and both want-list shortfall paths sum base + linked promos — a P4 Morph is a Morph for the 4-copy rule. Display counts (grid, card detail, stats) stay per-printing for collection fidelity. Deck matching and `find_card_printings` prefer base printings. If Lorcast later adds P4, migrate counts from the `odin_*` rows to the Lorcast `crd_*` rows and retire ours (mig 038 header). |
 | `cards` | One row per print. `full_name` is GENERATED (`name - version`). Stats: `cost`, `inkwell`, `strength`, `willpower`, `lore`, `move_cost` (locations). `ink` = primary ink; `inks text[]` (mig 003) is what filters use (dual-ink, set 13+). Prices + `price_usd_foil`, `legalities` (Lorcast's — informational only), `raw` jsonb. Unique `(set_id, collector_number)`. |
 | `collection` | `card_id` PK, `qty_normal`, `qty_foil`. Absolute counts. |
 | `imports` | Audit of every upload incl. dry runs: sha256, mode, matched/unmatched rows (jsonb), summary — plus `note` (annotate uploads, e.g. "sealed winnings") and `diff` (per-card before→after, mig 019). |
@@ -727,7 +727,9 @@ card lines.
 ### 7.4 Set aliases (import says `unknown set`)
 
 The importer resolves a file's set label via `set_aliases` first, then numeric
-`set_num`. When Dreamborn invents a new label, add a row to
+`set_num`. Compound card numbers like `22/P3` (Dreamborn files promos under
+the BASE set) resolve via the suffix: promo set from aliases, collector from
+the prefix (2026-09-15). When Dreamborn invents a new label, add a row to
 `db/migrations/002_set_aliases_seed.sql` following the existing pattern
 (`'promo'→P1`, `'promo 2'→P2`), then run `apply.sh`. Aliases are normalized
 `lower(trim())`.

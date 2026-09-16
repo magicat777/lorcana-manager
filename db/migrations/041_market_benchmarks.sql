@@ -38,5 +38,10 @@ INSERT INTO market_benchmarks (kind, game, label, tcgplayer_id, ticker) VALUES
   ('equity', 'MTG',       'Hasbro (HAS) — Magic',                   NULL, 'HAS'),
   ('equity', 'Pokemon',   'Nintendo ADR (NTDOY) ~ Pokemon proxy',   NULL, 'NTDOY'),
   ('equity', 'One Piece', 'Bandai Namco (7832.T) — One Piece',      NULL, '7832.T'),
-  ('equity', 'Yu-Gi-Oh',  'Konami (9766.T) — Yu-Gi-Oh',             NULL, '9766.T')
+  ('equity', 'Yu-Gi-Oh',  'Konami (9766.T) — Yu-Gi-Oh',             NULL, '9766.T'),
+  -- Ravensburger is private (verified again 2026-09-16 — no IPO; they
+  -- bought Steiff instead). DIS is the only tradeable Lorcana-adjacent
+  -- equity: licensor royalties, TINY share of Disney revenue — the
+  -- label says so, and the sealed panel stays the real Lorcana read.
+  ('equity', 'Lorcana',   'Disney (DIS) — licensor only, tiny exposure', NULL, 'DIS')
 ON CONFLICT (label) DO NOTHING;

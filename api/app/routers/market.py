@@ -219,6 +219,102 @@ def movers(days: int = 7, min_price: float = 1.0, limit: int = 20,
             "rows": rows}
 
 
+@router.get("/market/watch")
+def watch():
+    """The Watch page: every NAMED want list with full market detail per
+    card — both finishes' prices, 7d %, CI (vs own 30d avg, clean ticks),
+    mv liquidity, median ask + ask-gap, and the brief's trigger verdict.
+    Chase printings display on their foil price. Deck-derived wants live on
+    the Want List page; this page is for market timing."""
+    from ..services import brief as briefsvc
+    rows = db.query(
+        """WITH ph AS (SELECT card_id, captured_at,
+                              CASE WHEN NOT suspect_normal THEN usd END AS usd,
+                              CASE WHEN NOT suspect_foil THEN usd_foil END AS usd_foil
+                       FROM price_history
+                       WHERE card_id IN (SELECT card_id FROM want_list_cards)),
+           stats AS (
+             SELECT card_id,
+                    avg(usd) AS avg30_n, avg(usd_foil) AS avg30_f,
+                    count(*) FILTER (WHERE usd IS DISTINCT FROM p_n) AS mv_n,
+                    count(*) FILTER (WHERE usd_foil IS DISTINCT FROM p_f) AS mv_f
+             FROM (SELECT card_id, usd, usd_foil,
+                          lag(usd) OVER w AS p_n, lag(usd_foil) OVER w AS p_f,
+                          row_number() OVER w AS rn
+                   FROM ph WHERE captured_at > now() - interval '30 days'
+                   WINDOW w AS (PARTITION BY card_id ORDER BY captured_at)) x
+             WHERE rn > 1 GROUP BY card_id),
+           wk AS (SELECT DISTINCT ON (card_id) card_id, usd AS wk_n, usd_foil AS wk_f
+                  FROM ph WHERE captured_at <= now() - interval '7 days'
+                  ORDER BY card_id, captured_at DESC)
+           SELECT wl.id AS list_id, wl.name AS list_name, wlc.qty,
+                  c.id AS card_id, c.full_name, s.code AS set_code,
+                  c.collector_number, c.rarity,
+                  c.price_usd, c.price_usd_foil,
+                  s.core_legal, s.rotation_est,
+                  st.avg30_n, st.avg30_f, COALESCE(st.mv_n,0) AS mv_n,
+                  COALESCE(st.mv_f,0) AS mv_f, w2.wk_n, w2.wk_f,
+                  a.ask_normal, a.ask_foil, a.market_normal, a.market_foil,
+                  COALESCE(col.qty_normal,0) + COALESCE(col.qty_foil,0) AS owned
+           FROM want_lists wl
+           JOIN want_list_cards wlc ON wlc.list_id = wl.id
+           JOIN cards c ON c.id = wlc.card_id
+           JOIN sets s ON s.id = c.set_id
+           LEFT JOIN collection col ON col.card_id = c.id
+           LEFT JOIN stats st ON st.card_id = c.id
+           LEFT JOIN wk w2 ON w2.card_id = c.id
+           LEFT JOIN LATERAL (
+             SELECT market_normal, ask_normal, market_foil, ask_foil
+             FROM ask_history ah WHERE ah.card_id = c.id
+             ORDER BY fetched_at DESC LIMIT 1) a ON true
+           ORDER BY wl.name, c.full_name""")
+    from datetime import date
+    today = date.today()
+    lists: dict[int, dict] = {}
+    for r in rows:
+        chase = (r["rarity"] or "") in ("Enchanted", "Epic", "Iconic", "Illustrious")
+        # display finish: normal unless the printing is foil-only
+        foil_side = r["price_usd"] is None or (chase and r["price_usd_foil"] is not None)
+        price = r["price_usd_foil"] if foil_side else r["price_usd"]
+        avg30 = r["avg30_f"] if foil_side else r["avg30_n"]
+        mv = r["mv_f"] if foil_side else r["mv_n"]
+        wk = r["wk_f"] if foil_side else r["wk_n"]
+        ask = r["ask_foil"] if foil_side else r["ask_normal"]
+        mkt = r["market_foil"] if foil_side else r["market_normal"]
+        ci = round(float(price) / float(avg30), 2) \
+            if price is not None and avg30 and float(avg30) > 0 else None
+        pct7 = round(100 * (float(price) - float(wk)) / float(wk), 1) \
+            if price is not None and wk and float(wk) > 0 else None
+        ask_gap = bool(ask and mkt and float(ask) < 0.7 * float(mkt))
+        weeks_left = (max(0, (r["rotation_est"] - today).days) // 7
+                      if r["core_legal"] and r["rotation_est"] else None)
+        trigger = None
+        if ci is not None and avg30 and float(avg30) >= briefsvc.MIN_TRIGGER_PRICE:
+            if ci >= briefsvc.CI_MOMENTUM:
+                trigger = "momentum"
+            elif ci <= briefsvc.CI_DIP:
+                trigger = "dip"
+        entry = lists.setdefault(r["list_id"], {
+            "list_id": r["list_id"], "name": r["list_name"], "cards": []})
+        entry["cards"].append({
+            "card_id": r["card_id"], "full_name": r["full_name"],
+            "set_code": r["set_code"], "collector_number": r["collector_number"],
+            "rarity": r["rarity"], "qty": r["qty"], "owned": r["owned"],
+            "chase": chase, "foil_side": foil_side, "price": price,
+            "avg30": avg30, "ci": ci, "pct7": pct7, "mv": mv,
+            "ask": ask, "ask_gap": ask_gap, "weeks_left": weeks_left,
+            "trigger": trigger,
+        })
+    out = sorted(lists.values(), key=lambda x: x["name"].lower())
+    for wl in out:
+        wl["cards"].sort(key=lambda c: (c["trigger"] is None,
+                                        -abs((c["ci"] or 1) - 1)))
+        wl["total_cost"] = round(sum(
+            float(c["price"]) * c["qty"] for c in wl["cards"]
+            if c["price"] is not None), 2)
+    return {"as_of": _price_as_of(), "lists": out}
+
+
 @router.post("/market/sealed", status_code=201)
 def add_sealed_product(body: SealedProductIn):
     row = db.query_one(

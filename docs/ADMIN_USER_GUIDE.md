@@ -1113,6 +1113,18 @@ between rounds (the public URL works on a phone). The header line shows the
 loaded CR version/effective date and warns when the index looks stale. The
 same index answers `lorcana_rules` in any MCP-connected Claude.
 
+### 9.10 Watch (`/watch`)
+
+Market-timing view of every NAMED want list (the shopping-list view with
+needs/totals/TCGplayer export stays on Want List): per card — price (chase
+printings price on their foil ✦), 7d %, CI vs own 30-day average (green
+≤0.90 dip = entry, red ≥1.10 = late), mv liquidity (red <5 = stale price,
+trust the ask), median ask with GAP badge (ask <0.7× market — the real buy
+window on thin markets), $/legal-week, and the brief's trigger verdict.
+Rows sort triggers-first. Backed by `GET /market/watch` (suspect-clean,
+as-of stamped). Seeded 2026-09-16: set-9 SR+ onto the market-watch list,
+all 38 missing set-9 chase cards onto "Chase targets" (list #5).
+
 ---
 
 ## 10. Claude / MCP tools
@@ -1188,6 +1200,7 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /stats/movers?days=&limit=` | Top owned-card price gainers/losers over the window. |
 | `GET /missing?set=&rarity=` | Unowned cards in a set, with both finish prices, `legal_weeks_left`, and `deck_need` (wanted-deck shortfall copies). |
 | `GET /brief` | Structured brief + rendered `text` (incl. `market`: sealed quadrants + want-list singles' CI/ceiling/triggers). |
+| `GET /market/watch` | Watch page: named lists with per-card price/7d%/CI/mv/ask/gap/trigger, chase-aware display finish. |
 | `GET /market/holdings?limit=` | `{as_of, rows}`: owned cards by holding value — qty/unit prices per finish, per-finish day deltas ($ + `pct_*` unit-%), `foil_ratio`, `ci_*` (now ÷ own 30d avg), `moves_*_30d` liquidity proxy; suspect ticks excluded (cap 100). |
 | `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=&wantlist=&min_ci=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci` + `n_obs_30d`; `wantlist=true` restricts to want-list members (manual ∪ deck-derived); the price floor applies to the LARGER endpoint (a card rising through the floor counts — fixed 2026-09-08 after 13/99 foil vanished from a $5 run); suspect ticks excluded. |
 | `GET /collection/{card_id}/log` | Count audit trail, newest first (import filename/mode/note joined). |

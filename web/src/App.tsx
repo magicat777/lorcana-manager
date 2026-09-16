@@ -9,6 +9,7 @@ import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Brief from './pages/Brief'
 import Rules from './pages/Rules'
+import Watch from './pages/Watch'
 import Stats from './pages/Stats'
 import MatchStats from './pages/MatchStats'
 import Wantlist from './pages/Wantlist'
@@ -31,6 +32,7 @@ export default function App() {
           <NavLink to="/sim">Sim</NavLink>
           <NavLink to="/brief">Brief</NavLink>
           <NavLink to="/rules">Rules</NavLink>
+          <NavLink to="/watch">Watch</NavLink>
           <NavLink to="/upload">Upload</NavLink>
         </nav>
       </header>
@@ -50,6 +52,7 @@ export default function App() {
           <Route path="/sim/:id" element={<SimRun />} />
           <Route path="/brief" element={<Brief />} />
           <Route path="/rules" element={<Rules />} />
+          <Route path="/watch" element={<Watch />} />
           <Route path="/stats" element={<Stats />} />
         </Routes>
       </main>

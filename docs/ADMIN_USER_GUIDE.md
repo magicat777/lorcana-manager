@@ -378,14 +378,21 @@ sparklines on card detail (`price_history` in the card payload).
 ### 6.2 CronJob: `lorcana-news-fetch` — daily 07:30 PT
 
 Runs `python -m app.jobs.fetch_news`, half an hour before the brief so fresh
-items land in the morning push. Two sources (regex-parsed, no headless
+items land in the morning push. Four sources (regex-parsed, no headless
 browser): the official
 [disneylorcana.com news page](https://www.disneylorcana.com/en-US/news)
-(Ravensburger; server-rendered Nuxt markup) and ComicBook.com's
+(Ravensburger; server-rendered Nuxt markup) plus three RSS feeds through one
+generic `make_rss_parser(source, category, guard)` — ComicBook.com's
 [Disney Lorcana tag feed](https://comicbook.com/tag/disney-lorcana/feed/)
-(WordPress RSS, added 2026-08-30; canonical URL with query strings stripped
-is the dedup key, items are guarded to Lorcana mentions, category shows as
-"ComicBook.com" on the brief). Upserts into `news_items`: title, category
+(added 2026-08-30, guard ON), lorcanaplayer.com (added 2026-09-16, guard
+OFF — single-topic site whose headlines omit "Lorcana"), and lorcana.gg
+(added 2026-09-16, guard ON and LOAD-BEARING: their feed carries off-topic
+sponsored spam — casino posts were observed — and only items whose
+title/categories mention Lorcana pass). The hobby feeds were added after a
+quiet fortnight showed official+ComicBook alone miss spoiler-season
+coverage: the first fetch landed 11 items including Sep 9 championship
+news. Canonical URL with query strings stripped is the dedup key; category
+shows as the outlet name on the brief. Upserts into `news_items`: title, category
 (News / Gameplay / … or the outlet name), summary, image, published date.
 The URL is the identity; refetches update text in place, `first_seen_at` is
 set once. Parser tests (fixture-based, no network):

@@ -87,45 +87,66 @@ def _rss_field(block: str, tag: str) -> str | None:
     return htmllib.unescape(v).strip() or None
 
 
-def parse_comicbook(feed: str) -> list[dict]:
-    items, seen = [], set()
-    for m in _RSS_ITEM.finditer(feed):
-        b = m.group(1)
-        title, link = _rss_field(b, "title"), _rss_field(b, "link")
-        if not title or not link:
-            continue
-        # Canonical URL is the dedup identity: strip query strings
-        # ("?share=..." etc.) so refetches upsert instead of duplicating.
-        url = link.split("?", 1)[0]
-        if url in seen:
-            continue
-        cats = [htmllib.unescape(c).strip() for c in _RSS_CATEGORY.findall(b)]
-        if "lorcana" not in " ".join([title] + cats).lower():
-            continue
-        seen.add(url)
-        published = None
-        pd = _rss_field(b, "pubDate")
-        if pd:
-            try:
-                published = parsedate_to_datetime(pd).date()
-            except (TypeError, ValueError):
-                pass
-        desc = _rss_field(b, "description") or ""
-        desc = re.sub(r"<[^>]+>", " ", desc)
-        desc = re.sub(r"\s+", " ", htmllib.unescape(desc)).strip()[:400] or None
-        items.append({
-            # category is the user-visible label on the brief; source is the
-            # DB identifier (matches the 'disneylorcana'/'lorcast' style).
-            "source": "comicbook", "url": url, "title": title,
-            "category": "ComicBook.com", "summary": desc,
-            "image_url": None, "published_at": published,
-        })
-    return items
+def make_rss_parser(source: str, category: str, guard: bool = True):
+    """Generic WordPress/RSS item parser. guard=True keeps only items whose
+    title+categories mention Lorcana — REQUIRED for mixed/polluted feeds
+    (comicbook is a shared tag feed; lorcana.gg's feed carries off-topic
+    sponsored spam). guard=False for single-topic sites whose headlines
+    routinely omit the word (lorcanaplayer: "Attack of the Vine! ...")."""
+    def parse(feed: str) -> list[dict]:
+        items, seen = [], set()
+        for m in _RSS_ITEM.finditer(feed):
+            b = m.group(1)
+            title, link = _rss_field(b, "title"), _rss_field(b, "link")
+            if not title or not link:
+                continue
+            # Canonical URL is the dedup identity: strip query strings
+            # ("?share=..." etc.) so refetches upsert instead of duplicating.
+            url = link.split("?", 1)[0]
+            if url in seen:
+                continue
+            cats = [htmllib.unescape(c).strip() for c in _RSS_CATEGORY.findall(b)]
+            if guard and "lorcana" not in " ".join([title] + cats).lower():
+                continue
+            seen.add(url)
+            published = None
+            pd = _rss_field(b, "pubDate")
+            if pd:
+                try:
+                    published = parsedate_to_datetime(pd).date()
+                except (TypeError, ValueError):
+                    pass
+            desc = _rss_field(b, "description") or ""
+            desc = re.sub(r"<[^>]+>", " ", desc)
+            desc = re.sub(r"\s+", " ", htmllib.unescape(desc)).strip()[:400] or None
+            items.append({
+                # category is the user-visible label on the brief; source is
+                # the DB identifier (matches 'disneylorcana'/'lorcast' style).
+                "source": source, "url": url, "title": title,
+                "category": category, "summary": desc,
+                "image_url": None, "published_at": published,
+            })
+        return items
+    return parse
+
+
+# kept as a named function: the in-image fixture test imports it
+parse_comicbook = make_rss_parser("comicbook", "ComicBook.com", guard=True)
 
 
 SOURCES = [
     ("disneylorcana", "https://www.disneylorcana.com/en-US/news", parse_disneylorcana),
     ("comicbook", "https://comicbook.com/tag/disney-lorcana/feed/", parse_comicbook),
+    # Hobby editorial (added 2026-09-16 after a quiet fortnight showed the
+    # official+comicbook pair misses spoiler-season coverage). Same removal
+    # rule as always: a source that 403s gets removed, never worked around.
+    ("lorcanaplayer", "https://lorcanaplayer.com/feed/",
+     make_rss_parser("lorcanaplayer", "Lorcana Player", guard=False)),
+    # guard=True is load-bearing here: lorcana.gg's feed carries off-topic
+    # sponsored posts (observed 2026-09-16: casino spam) — only items whose
+    # title/categories mention Lorcana pass.
+    ("lorcanagg", "https://lorcana.gg/feed/",
+     make_rss_parser("lorcanagg", "Lorcana.gg", guard=True)),
 ]
 
 

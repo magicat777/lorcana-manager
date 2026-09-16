@@ -1124,8 +1124,14 @@ printings price on their foil ✦), 7d %, CI vs own 30-day average (green
 ≤0.90 dip = entry, red ≥1.10 = late), mv liquidity (red <5 = stale price,
 trust the ask), median ask with GAP badge (ask <0.7× market — the real buy
 window on thin markets), $/legal-week, and the brief's trigger verdict.
-Rows sort triggers-first. Backed by `GET /market/watch` (suspect-clean,
-as-of stamped). Seeded 2026-09-16: set-9 SR+ onto the market-watch list,
+Rows sort triggers-first by default; every column is click-sortable
+(numeric columns descending on first click, nulls always sink). Backed
+by `GET /market/watch` (suspect-clean, as-of stamped). Cards newly added
+to a list get their first ask at the next 05:30 fetch — run the job
+manually (`kubectl -n lorcana create job ask-now --from=cronjob/lorcana-ask-fetch`)
+to backfill sooner. On thin chase markets expect asks far ABOVE the
+stale market price (Iconics: ~2×) — the ask is what buying actually
+costs; a GAP flag on this list is rare and worth acting on. Seeded 2026-09-16: set-9 SR+ onto the market-watch list,
 all 38 missing set-9 chase cards onto "Chase targets" (list #5).
 
 ---

@@ -434,7 +434,10 @@ pushes to ntfy if the secret exists. Same content as `GET /api/brief`, the
   play-demand leg of the quadrant, and chase cards ride the collector
   clock; watching them must not drift it. A want list can be pure market instrumentation
   with no purchase intent — list #4 "Emerald/Steel missing (market watch)"
-  (184 standard-rarity unowned E/S singles across all Core sets 9–13; chase
+  (E/S singles across Core sets 9–13 plus set-9 SR+ backfill targets, ~200
+  cards as of 2026-09-16; chase-print watching lives on list #5 "Chase
+  targets" — its cards get per-card signals but, per the median guard, never
+  the set-CI leg; chase
   prints excluded as collector-driven; created 2026-09-03 for sets 11+13,
   extended 2026-09-05 to the whole rotation) gives every Core set a CI
   median — the per-set lines on the Grafana market panel and the quadrants'
@@ -777,7 +780,7 @@ Logs land in Loki with `ai.odin.loki.app_category: lorcana`.
 ## 9. Web UI user guide
 
 Base URL `http://jason-holt-blade-18-rz09-0484.local:30710`. Nav bar: **Cards · Stats · Decks ·
-Matches · Sim · Brief · Upload**. Every top-level page opens with a hero
+Matches · Sim · Brief · Rules · Watch · Upload**. Every top-level page opens with a hero
 banner from official set key art (see Branding below).
 
 **Install on your phone**: open the site in Safari/Chrome and *Add to Home

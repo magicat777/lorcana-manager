@@ -428,7 +428,11 @@ pushes to ntfy if the secret exists. Same content as `GET /api/brief`, the
 - **CI (competitive index)** = a want-list single's price ÷ its own 30-day
   `price_history` average (needs ≥5 snapshots) — play demand. "Want-list" =
   manual want-list entries ∪ the deck-derived shopping list (wanted decks'
-  shortfall, minus skips). A want list can be pure market instrumentation
+  shortfall, minus skips). Chase printings (Enchanted/Epic/Iconic/Illustrious)
+  on a want list get per-card triggers, ask fetching, and movers coverage
+  but are EXCLUDED from the set-CI MEDIAN (2026-09-16) — the median is the
+  play-demand leg of the quadrant, and chase cards ride the collector
+  clock; watching them must not drift it. A want list can be pure market instrumentation
   with no purchase intent — list #4 "Emerald/Steel missing (market watch)"
   (184 standard-rarity unowned E/S singles across all Core sets 9–13; chase
   prints excluded as collector-driven; created 2026-09-03 for sets 11+13,

@@ -55,7 +55,7 @@ def _market_signals() -> dict:
                AND ph.usd IS NOT NULL AND NOT ph.suspect_normal
              GROUP BY ph.card_id)
            SELECT c.full_name, s.code AS set_code, c.collector_number,
-                  c.price_usd, h.avg30, h.n30,
+                  c.rarity, c.price_usd, h.avg30, h.n30,
                   s.core_legal, s.released_at, s.rotation_est
            FROM wl JOIN cards c ON c.id = wl.card_id
            JOIN sets s ON s.id = c.set_id
@@ -93,7 +93,8 @@ def _market_signals() -> dict:
             trigger = "dip"       # softening (new-set hype drain) — buy if still playable
         rows.append({
             "full_name": r["full_name"], "set_code": r["set_code"],
-            "collector_number": r["collector_number"], "price": price,
+            "collector_number": r["collector_number"], "rarity": r["rarity"],
+            "price": price,
             "avg30": round(float(r["avg30"]), 2) if r["avg30"] is not None else None,
             "ci": ci, "ceiling": ceiling, "weeks_left": weeks_left,
             "trigger": trigger,
@@ -102,9 +103,19 @@ def _market_signals() -> dict:
 
     # Median CI per set — the "are this set's singles actually moving" number
     # each sealed SKU is judged against.
+    # The set CI median is a PLAY-demand instrument (the CI leg of the
+    # SP-vs-CI quadrant): chase printings ride the collector clock and are
+    # excluded from the MEDIAN here — but they stay in `rows`, so per-card
+    # dip/momentum triggers, ask fetching, and movers coverage all still
+    # apply to watched chase cards (2026-09-16: added when SR+/Iconic
+    # watching entered the plan; before this, chase cards on ANY want list
+    # would drift the median toward the collector clock).
+    _CHASE = {"Enchanted", "Epic", "Iconic", "Illustrious"}
     set_ci: dict[str, float] = {}
     for code in {x["set_code"] for x in rows}:
-        cis = sorted(x["ci"] for x in rows if x["set_code"] == code and x["ci"] is not None)
+        cis = sorted(x["ci"] for x in rows
+                     if x["set_code"] == code and x["ci"] is not None
+                     and (x.get("rarity") or "") not in _CHASE)
         if cis:
             set_ci[code] = cis[len(cis) // 2]
 

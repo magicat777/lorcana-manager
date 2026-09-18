@@ -195,10 +195,9 @@ def build_brief() -> dict:
         last_event["final_record"] = f"{w}-{l}"
 
     meta = db.query(
-        """SELECT least(m.opp_ink_1, coalesce(m.opp_ink_2, m.opp_ink_1)) || '/' ||
-                  greatest(m.opp_ink_1, coalesce(m.opp_ink_2, m.opp_ink_1)) AS ink_pair,
+        """SELECT CASE WHEN m.opp_ink_2 IS NULL OR m.opp_ink_2 = m.opp_ink_1 THEN m.opp_ink_1 ELSE least(m.opp_ink_1, m.opp_ink_2) || '/' || greatest(m.opp_ink_1, m.opp_ink_2) END AS ink_pair,
                   count(*) AS times_faced,
-                  count(*) FILTER (WHERE m.result IN ('1-2','0-2')) AS losses_to
+                  count(*) FILTER (WHERE m.result IN ('1-2','0-2','0-1')) AS losses_to
            FROM matches m
            WHERE m.opp_ink_1 IS NOT NULL
              AND m.event_id IN (SELECT id FROM events ORDER BY date DESC, id DESC LIMIT 5)

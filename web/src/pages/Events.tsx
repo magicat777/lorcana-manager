@@ -4,7 +4,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { get, send } from '../api'
 import type { Deck, EventRow, Venue } from '../types'
 
+interface DuelsCoverage {
+  games: number; wins: number; losses: number
+  wins_logged: number; losses_logged: number; logged: number
+  biased: boolean
+}
+
 export default function Events() {
+  const [coverage, setCoverage] = useState<DuelsCoverage | null>(null)
   const [events, setEvents] = useState<EventRow[]>([])
   const [decks, setDecks] = useState<Deck[]>([])
   const [venues, setVenues] = useState<Venue[]>([])
@@ -26,6 +33,7 @@ export default function Events() {
     get<EventRow[]>('/events').then(setEvents).catch((e) => setError(String(e)))
 
   useEffect(() => {
+    get<DuelsCoverage>('/duels/coverage').then(setCoverage).catch(() => {})
     loadEvents()
     get<Deck[]>('/decks').then(setDecks).catch(() => {})
     get<Venue[]>('/venues').then(setVenues).catch(() => {})
@@ -54,6 +62,13 @@ export default function Events() {
     <div style={{ maxWidth: 1000 }}>
       <Hero img="hero-matches.jpg" title="Match Log"
         right={<Link to="/matches/stats">Win-rate analytics →</Link>} />
+      {coverage && coverage.games > 0 && (
+        <p className={coverage.biased ? 'error' : 'muted'} style={{ fontSize: '0.85rem' }}>
+          duels.ink coverage: {coverage.logged}/{coverage.games} games have card-level logs
+          (wins {coverage.wins_logged}/{coverage.wins}, losses {coverage.losses_logged}/{coverage.losses})
+          {coverage.biased && ' — ⚠ loss capture lags wins: card evidence is win-skewed; paste loss logs first'}
+        </p>
+      )}
       <p className="muted">
         Rule 5.2: no notes during a match. Fill this in <strong>between rounds</strong>,
         review it <strong>before pairings</strong> — never at the table.

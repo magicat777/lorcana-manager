@@ -200,6 +200,19 @@ def _write_cards(conn, deck_id: int, cards: list[DeckCard]):
                 "INSERT INTO deck_cards (deck_id, card_id, qty) VALUES (%s,%s,%s)",
                 (deck_id, cid, qty),
             )
+        # deck_versions snapshot (mig 042): overwrite-in-place loses which
+        # LIST a historical match was played with — every save records one
+        if merged:
+            from ..services.duels_ledger import snapshot_deck_version
+            cur.execute(
+                "SELECT id, full_name FROM cards WHERE id = ANY(%s)",
+                (list(merged),))
+            names = {r["id"]: r["full_name"] for r in cur.fetchall()}
+            snapshot_deck_version(
+                cur, deck_id,
+                [{"duels_id": None, "name": names[cid], "count": q}
+                 for cid, q in merged.items() if cid in names],
+                "save_deck")
 
 
 @router.get("/decks")

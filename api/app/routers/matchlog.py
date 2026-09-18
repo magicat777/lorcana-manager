@@ -1,6 +1,6 @@
 """Match Log: events -> matches -> games, with open-ended observations.
 Fill between rounds, review before pairings (Lorcana tournament rule 5.2)."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .. import config, db
@@ -338,15 +338,18 @@ def ink_pairs(store: str = "", last_events: int = 0, event_type: str = ""):
         where.append("e.id IN (SELECT id FROM events ORDER BY date DESC, id DESC LIMIT %s)")
         params.append(last_events)
     return db.query(
-        f"""SELECT least(m.opp_ink_1, coalesce(m.opp_ink_2, m.opp_ink_1)) || '/' ||
-                   greatest(m.opp_ink_1, coalesce(m.opp_ink_2, m.opp_ink_1)) AS ink_pair,
+        f"""SELECT CASE WHEN m.opp_ink_2 IS NULL OR m.opp_ink_2 = m.opp_ink_1 THEN m.opp_ink_1 ELSE least(m.opp_ink_1, m.opp_ink_2) || '/' || greatest(m.opp_ink_1, m.opp_ink_2) END AS ink_pair,
                    count(*) AS times_faced,
-                   count(*) FILTER (WHERE m.result IN ('1-2','0-2')) AS losses_to,
+                   -- LOSS_RESULTS, not a stale inline list: the old ('1-2','0-2')
+                   -- missed duels' single-game '0-1', so practice losses read 0
+                   -- (found 2026-09-18 reconciling the duels ledger)
+                   count(*) FILTER (WHERE m.result = ANY(%s)) AS losses_to,
                    array_agg(DISTINCT m.opponent_handle)
                      FILTER (WHERE m.opponent_handle <> '') AS opponents
             FROM matches m JOIN events e ON e.id = m.event_id
             WHERE {' AND '.join(where)}
-            GROUP BY 1 ORDER BY times_faced DESC, losses_to DESC""", params)
+            GROUP BY 1 ORDER BY times_faced DESC, losses_to DESC""",
+        [list(LOSS_RESULTS)] + params)
 
 
 @router.get("/matchlog/stats")
@@ -500,6 +503,24 @@ def list_duels_logs(limit: int = 100, match_id: int = 0):
                   first_player, turns, corpus_excluded, exclude_reason
            FROM duels_game_logs {where} ORDER BY id DESC LIMIT %s""",
         params + [min(limit, 500)])
+
+
+@router.post("/duels/import-history")
+async def import_duels_history(request: Request):
+    """duels.ink account-ledger CSV (raw body, text/csv). Upserts on
+    game_id — re-import never deletes; see services/duels_ledger.py."""
+    from ..services import duels_ledger
+    body = (await request.body()).decode("utf-8", errors="replace")
+    if not body or "game_id" not in body.splitlines()[0]:
+        raise HTTPException(422, "expected a duels.ink match-history CSV (game_id header)")
+    fname = request.headers.get("x-source-file", "upload")
+    return duels_ledger.import_history(body, source_file=fname)
+
+
+@router.get("/duels/coverage")
+def duels_coverage():
+    from ..services import duels_ledger
+    return duels_ledger.coverage()
 
 
 @router.delete("/duels/logs/{log_id}", status_code=204)

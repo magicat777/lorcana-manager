@@ -470,3 +470,22 @@ works): odin-mcp http-20260918-setstep-1.
   19→20). The old parser skipped those lines, so the duplication was
   invisible and the log passed as clean; it was never actually
   consistent. Quarantined set is now #11/#14/#17/#30; #37 remains in.
+
+## duels.ink ledger (2026-09-18) — calibration denominators will change
+
+Per docs/ODIN_duels_ledger_replay_handoff.md: ODIN's duels sample was
+survivorship-biased (paste-per-game captured 18/32 wins, 10/43 losses;
+p≈0.004). New `duels_games` table (mig 042) holds the COMPLETE account
+ledger; text logs stay the card-level layer, linked via match_row_id.
+
+Engine-relevant:
+- `lorcana_sim_calibration` output now appends a ⚠ win-skew warning while
+  loss-log coverage < 80% of win coverage — real-side records you compare
+  against are win-flattered until more loss logs are pasted.
+- A later change (pending Jason) may re-point calibration's REAL side at
+  the ledger (complete W-L) instead of logged matches — that will move
+  real-record numbers; we'll flag it in this doc when it happens.
+- The replay-file ingester (duels-replay-v1, structured JSON with an
+  `undone` field) is specced in the handoff as P1 — when it lands, replay
+  validation gets machine-readable ground truth instead of text-log
+  reconstruction. Nothing for you to do yet.

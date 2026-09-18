@@ -471,6 +471,18 @@ works): odin-mcp http-20260918-setstep-1.
   invisible and the log passed as clean; it was never actually
   consistent. Quarantined set is now #11/#14/#17/#30; #37 remains in.
 
+## Deck 48/50 state change + a results-unknown event (2026-09-18)
+
+Jason confirmed: #48 Hunny Rescue v6 was physically un-sleeved to build
+#50 Supers Tempo. Applied: #48 not-in-use, #50 sim_only CLEARED (it's his
+piloted deck now — sim runs against it are fine, it's no longer
+opponent-only) and marked built (force: four names remain unowned in the
+collection pending his re-scan — the brief's allocation warning tracks
+it). Calibration note: #50's duels games are HIS games now, not
+opponent-deck data. Event #38 (2026-08-20 sanctioned) is a RESULTS-UNKNOWN
+shell — rounds were played, outcomes lost (phone issue); exclude it from
+any per-event record aggregation rather than reading 0-0.
+
 ## duels.ink ledger (2026-09-18) — calibration denominators will change
 
 Per docs/ODIN_duels_ledger_replay_handoff.md: ODIN's duels sample was

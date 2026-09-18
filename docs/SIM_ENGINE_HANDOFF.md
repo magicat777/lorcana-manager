@@ -426,3 +426,25 @@ What matters to the engine side:
   Lilo - Escape Artist as P2/25). If you ever see a non-int set code reach
   the engine again, that's a bug on our side — report it, don't work
   around it in snapshot_decks.py.
+
+## Undo-aware duels parsing — replay corpus change (2026-09-18)
+
+The duels importer now REVERTS take-backs instead of only counting them
+(odin-mcp http-20260918-undofix-2): before each effectful line the parser
+snapshots its state; an undo marker restores it (single-depth — one
+take-back cancels one line; extra consecutive undos count but revert
+nothing). Also found a third undo surface form: "Player N took back their
+action (free undo)" — the second-person-only regex never matched it, so
+that dialect's undos were invisible entirely.
+
+Corpus impact for replay validation:
+- Log #37 (event #37 r2) re-parsed clean and is UN-quarantined — the
+  "P1 jumped 2→1" was a clean undo, not a tracking bug. Its parsed blob
+  was refreshed (pre-fix it double-counted the undone play/quest).
+- Logs #14/#17/#30 stay quarantined: re-parsed WITH undo handling they
+  still carry unexplained transitions — genuine duels.ink tracking bugs.
+- Going forward, undo-containing games land in the corpus with
+  post-revert (i.e., net-true) plays/quests/lore. undo_counts remains the
+  undo-scouting metric. If your replay tier consumes plays counts, note
+  pre-fix logs may include undone actions in their counts; #37 is the
+  only affected corpus member and was refreshed.

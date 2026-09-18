@@ -82,5 +82,6 @@ INSERT INTO duels_deck_map (duels_deck_id, deck_id, note) VALUES
   ('01a01646-e86d-709f-a6bd-c60e8ab3364a', 31, 'verified exact 2026-09-18'),
   ('01a06e03-8437-79de-969a-3029994b0d8a', 48, 'verified exact 2026-09-18'),
   ('01a08c1a-2018-7a31-8dd0-bd3de66d85ba', 50, 'verified exact 2026-09-18; sim-only flag question open'),
-  ('01a020ec-568f-747d-bbf8-4fc7b95ab143', 43, 'verified association 2026-09-18 (list drift, see deck_versions)')
+  ('01a020ec-568f-747d-bbf8-4fc7b95ab143', 43, 'verified association 2026-09-18 (list drift, see deck_versions)'),
+  ('01a01b94-18d0-7ff1-a029-db8c67d00b3a', 43, 'INFERRED 2026-09-18: all-Hunny six-ink bot list, 6 games Aug 19-Sep 6 — desktop-session inference, not list-verified')
 ON CONFLICT (duels_deck_id) DO NOTHING;

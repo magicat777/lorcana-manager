@@ -60,7 +60,11 @@ class VenueUpdate(BaseModel):
 
 
 class EventIn(BaseModel):
-    date: str
+    # None -> today in America/Los_Angeles, server-side. date became optional
+    # 2026-09-18: agents logging Thursday-evening events after 5pm PDT passed
+    # their own "today", which had already rolled to Friday UTC — three
+    # sanctioned events were dated a day late (#4/#30/#36, since corrected).
+    date: str | None = None
     store: str = ""                    # free text ("Other" venues); or use venue_slug
     venue_slug: str | None = None      # preferred: stable venue identifier
     format: str = "Core Constructed"
@@ -210,14 +214,35 @@ def create_event(body: EventIn):
         raise HTTPException(422, "provide venue_slug or a free-text store name")
     if body.event_type not in EVENT_TYPES:
         raise HTTPException(422, f"event_type must be one of {EVENT_TYPES}")
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    from zoneinfo import ZoneInfo as _ZI
+    event_date = body.date or _dt.now(_ZI("America/Los_Angeles")).date().isoformat()
+    # league-night sanity: a date one day AFTER the venue's league night is
+    # the classic UTC-rollover mistake — warn, don't block (a Friday game
+    # at a Thursday venue is legal, just unusual)
+    date_warning = None
+    if venue_id:
+        v = db.query_one("SELECT event_night FROM venues WHERE id=%s", (venue_id,))
+        if v and v["event_night"]:
+            nights = ["monday", "tuesday", "wednesday", "thursday", "friday",
+                      "saturday", "sunday"]
+            d = _date.fromisoformat(event_date)
+            if nights[(d - _td(days=1)).weekday()] == v["event_night"].lower():
+                date_warning = (f"{event_date} is the day AFTER this venue's "
+                                f"{v['event_night']} league night — if this was "
+                                f"logged after midnight UTC, the date may be off "
+                                f"by one (PUT /events/{{id}} fixes it).")
     row = db.query(
         """INSERT INTO events (date, store, venue_id, format, player_count, rounds,
                                deck_id, deck_version, entry_fee, notes, event_type)
            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-        (body.date, store, venue_id, body.format, body.player_count, body.rounds,
+        (event_date, store, venue_id, body.format, body.player_count, body.rounds,
          body.deck_id, body.deck_version, body.entry_fee, body.notes,
          body.event_type))
-    return _event_row(row[0]["id"])
+    out = _event_row(row[0]["id"])
+    if date_warning:
+        out["date_warning"] = date_warning
+    return out
 
 
 @router.get("/events/{event_id}")

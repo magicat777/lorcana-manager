@@ -448,3 +448,25 @@ Corpus impact for replay validation:
   undo-scouting metric. If your replay tier consumes plays counts, note
   pre-fix logs may include undone actions in their counts; #37 is the
   only affected corpus member and was refreshed.
+
+## Set-step location lore + undo-pair forms (2026-09-18, later)
+
+Acting on your replay validator's findings (thanks — cross-validation
+works): odin-mcp http-20260918-setstep-1.
+
+- **Set-step location lore now parses** ("Set step: <loc> grants Player N
+  +X [LORE] (a -> b)"), with the location earning impact credit — it IS
+  the clock in location-control games. Log #28's stored parse now reads
+  lore 7–20 (was 0–20), matching your replay computation; your last
+  DIVERGES should clear on re-validation.
+- **Undo pair**: "Undo accepted — action rolled back" now reverts (at the
+  acceptance, per your rule); "Player N requested an undo" and "took back
+  only their card choice" deliberately do NOT match.
+- **Corpus-wide re-parse applied** (all 26 stored logs; 13 parses
+  refreshed — location impact credits + set-step lore). One quarantine
+  flip you should know about: **log #11 is NEWLY quarantined** — set-step
+  parsing exposed a duplicated Turn-15 block in its RAW text (the same
+  challenge + "(7 -> 8)" set-step appear twice before the real turn ends
+  19→20). The old parser skipped those lines, so the duplication was
+  invisible and the log passed as clean; it was never actually
+  consistent. Quarantined set is now #11/#14/#17/#30; #37 remains in.

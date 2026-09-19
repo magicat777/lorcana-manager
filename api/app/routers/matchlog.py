@@ -482,10 +482,30 @@ def cut_list(deck_id: int, event_type: str = ""):
         key = c["full_name"].lower()
         c["ever_mvp"] = key in mvp
         c["dead_mentions"] = dead_counts.get(key, 0)
+    # Objective dead-card signal from replay metrics (mig 043): per card,
+    # copies drawn-or-kept but never played/inked by game end, split by
+    # result — the loss-side evidence the between-rounds notes never
+    # captured (survivorship bias: losses were rarely pasted).
+    replay_dead = db.query(
+        """SELECT pc.key AS card, count(*) FILTER (WHERE g.result = 'loss') AS stuck_losses,
+                  count(*) FILTER (WHERE g.result = 'win') AS stuck_wins,
+                  count(DISTINCT r.game_id) AS games
+           FROM duels_replays r
+           JOIN duels_games g ON g.game_id = r.game_id AND g.deck_id = %s
+           CROSS JOIN LATERAL jsonb_each(r.metrics->'per_card') AS pc(key, val)
+           WHERE r.metrics IS NOT NULL
+             AND (pc.val->>'stuck_at_end')::int > 0
+           GROUP BY pc.key ORDER BY 2 DESC, 3 DESC""", (deck_id,))
+    replay_games = db.query_one(
+        """SELECT count(*) AS n FROM duels_replays r
+           JOIN duels_games g ON g.game_id = r.game_id
+           WHERE g.deck_id = %s AND r.metrics IS NOT NULL""", (deck_id,))["n"]
     return {
         "deck_id": deck_id, "deck_name": deck["name"], "events_logged": events_logged,
         "never_mvp": [c for c in cards if not c["ever_mvp"]],
         "cards": cards,
+        "replay_games": replay_games,
+        "replay_dead": replay_dead,
     }
 
 
@@ -540,6 +560,35 @@ async def import_duels_history(request: Request):
         raise HTTPException(422, "expected a duels.ink match-history CSV (game_id header)")
     fname = request.headers.get("x-source-file", "upload")
     return duels_ledger.import_history(body, source_file=fname)
+
+
+@router.post("/duels/import-replay")
+async def import_replay(request: Request, game_id: str = ""):
+    """Upload one *.replay.gz (raw body). game_id query param optional —
+    the file's own gameId wins when present."""
+    from psycopg.types.json import Jsonb
+    from ..services.duels_replay import PARSE_VERSION, parse_replay
+    body = await request.body()
+    if not body[:2] == b"\x1f\x8b":
+        raise HTTPException(422, "expected a gzip replay file")
+    try:
+        metrics, warnings = parse_replay(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    import gzip as _gz, json as _json
+    gid = _json.loads(_gz.decompress(body)).get("gameId") or game_id
+    if not gid:
+        raise HTTPException(422, "replay carries no gameId; pass ?game_id=")
+    db.execute(
+        """INSERT INTO duels_replays (game_id, raw_gz, source, parse_version,
+             metrics, parse_warnings)
+           VALUES (%s, %s, 'upload', %s, %s, %s)
+           ON CONFLICT (game_id) DO UPDATE SET raw_gz = EXCLUDED.raw_gz,
+             parse_version = EXCLUDED.parse_version,
+             metrics = EXCLUDED.metrics, parse_warnings = EXCLUDED.parse_warnings""",
+        (gid, body, PARSE_VERSION, Jsonb(metrics), Jsonb(warnings)))
+    return {"game_id": gid, "warnings": warnings,
+            "cards_tracked": len(metrics.get("per_card", {}))}
 
 
 @router.get("/duels/coverage")

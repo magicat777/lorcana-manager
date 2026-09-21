@@ -501,3 +501,16 @@ Engine-relevant:
   `undone` field) is specced in the handoff as P1 — when it lands, replay
   validation gets machine-readable ground truth instead of text-log
   reconstruction. Nothing for you to do yet.
+
+## Replay corpus is live (2026-09-20)
+
+The full ledger (78 games) + all 77 replays are in: duels_games +
+duels_replays (metrics parsed at v2, raw retained; §4.5 acceptance replay
+matched exactly). For replay validation this is your future ground truth —
+structured frames with real `undone` flags instead of text reconstruction.
+Format facts learned live, for whenever you consume these: undo frames are
+both `FREE_UNDO:<seq>` and `UNDO:<seq>`; choice-only undos
+(`UNDO_CHOICE`/`CHOICE_UNDO`) are not action take-backs; ~10 log types
+beyond the handoff's survey exist (list in the parser's KNOWN sets).
+Fetching is rate-limited well below 1 req/s — never fetch from your side;
+read our stored raw_gz instead.

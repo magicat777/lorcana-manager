@@ -13,7 +13,7 @@ import gzip
 import json
 from collections import Counter
 
-PARSE_VERSION = 1
+PARSE_VERSION = 2
 MAX_JSON_BYTES = 5 * 1024 * 1024
 
 KNOWN_ACTIONS = {
@@ -32,6 +32,10 @@ KNOWN_LOGS = {
     "ABILITY_ACTIVATED", "ABILITY_CONDITION_FAILED", "CHOICE_RESOLVED",
     "FREE_UNDO", "TIMER_STARTED", "TIMER_INCREMENT", "GAME_CONCEDED",
     "GAME_END",
+    # observed across the full 77-replay backfill (2026-09-20):
+    "ABILITY_DECLINED", "CARD_BOOSTED", "CARD_MOVED", "CARD_PUT_INTO_INKWELL",
+    "QUICK_CHAT", "LORE_GAINED", "DAMAGE_COUNTERS_MOVED", "SUPPORT_GIVEN",
+    "CARD_REVEALED", "DAMAGE_REMOVED", "CARD_RETURNED_TO_DECK",
 }
 
 
@@ -97,7 +101,9 @@ def parse_replay(gz_bytes: bytes) -> tuple[dict, list[str]]:
             elif t == "CARD_PLAYED":
                 played[n] += 1
                 first_played_turn.setdefault(n, int(lg.get("turnNumber") or 0))
-            elif t == "CARD_INKED":
+            elif t in ("CARD_INKED", "CARD_PUT_INTO_INKWELL"):
+                # effect-driven inkwell placement counts as leaving the hand
+                # usefully — otherwise stuck_at_end over-counts those cards
                 inked[n] += 1
 
     # objective dead-card signal: drawn (or kept in hand) but neither played

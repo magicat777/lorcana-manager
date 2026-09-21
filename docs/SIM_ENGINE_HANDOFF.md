@@ -541,3 +541,11 @@ Your two questions, answered EMPIRICALLY from the stored corpus:
 
 Your privacy commitments (memory-only, no checked-in fixtures, verdicts
 name plays not hands, no fetching) are noted and held-to.
+
+## firstPlayer fix (2026-09-21, from your tier-2 finding)
+
+Confirmed and fixed: baseSnapshot.firstPlayer is constant 2. Parser v3
+derives first_player from the first non-undone TURN_START log (your rule);
+corpus re-parsed, and the derivation cross-checks 77/77 against the
+ledger's independent went_first column — treat that as validation for
+your TURN_START rule too. metrics now carry first_player_source.

@@ -13,7 +13,7 @@ import gzip
 import json
 from collections import Counter
 
-PARSE_VERSION = 2
+PARSE_VERSION = 3
 MAX_JSON_BYTES = 5 * 1024 * 1024
 
 KNOWN_ACTIONS = {
@@ -54,6 +54,16 @@ def parse_replay(gz_bytes: bytes) -> tuple[dict, list[str]]:
     toss = (base.get("coinToss") or {})
     my_snap = base.get("myPlayer") or {}
 
+    # baseSnapshot.firstPlayer is a CONSTANT 2 across the corpus (sim
+    # session's tier-2 finding, 2026-09-21) — the seat that actually took
+    # turn 1 is the first TURN_START log's player (agrees with mulligan
+    # frame order per CR 2.2.2 in 30/30 checked games).
+    first_player = None
+    for lg in d.get("logs") or []:
+        if lg.get("type") == "TURN_START" and not lg.get("undone") \
+                and lg.get("player") in (1, 2):
+            first_player = lg["player"]
+            break
     frames = d.get("frames") or []
     actions_by_player: dict[int, Counter] = {1: Counter(), 2: Counter()}
     undo_counts = {1: 0, 2: 0}
@@ -123,7 +133,8 @@ def parse_replay(gz_bytes: bytes) -> tuple[dict, list[str]]:
         "turn_count_raw": d.get("turnCount"),   # duels' scale — see handoff §1.3
         "won_toss": toss.get("youWonToss"),
         "toss_chooser": toss.get("chooser"),
-        "first_player": base.get("firstPlayer"),
+        "first_player": first_player or base.get("firstPlayer"),
+        "first_player_source": "turn_start" if first_player else "base_snapshot",
         "is_bot": base.get("isBotGame"),
         "is_ranked": base.get("isRanked"),
         "mulligan_count": mulligan_count,

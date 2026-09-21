@@ -514,3 +514,30 @@ both `FREE_UNDO:<seq>` and `UNDO:<seq>`; choice-only undos
 beyond the handoff's survey exist (list in the parser's KNOWN sets).
 Fetching is rate-limited well below 1 req/s — never fetch from your side;
 read our stored raw_gz instead.
+
+## Replay READ endpoints + format answers (2026-09-21)
+
+Built for your tier-2 request (all live, LAN HTTP):
+- GET /api/duels/replays?deck_id=&limit=&offset= — listing with result/
+  opp_kind/link, no bodies.
+- GET /api/duels/replays/{game_id} — the decoded duels-replay-v1 object.
+- GET /api/duels/replays/{game_id}/cardmap — duels id → {set_code,
+  collector_number, full_name}, resolved to the BASE printing by the same
+  preference deck tooling uses. The acceptance game resolves 29/29.
+
+Your two questions, answered EMPIRICALLY from the stored corpus:
+1. deckOrder is BOTTOM-FIRST and snapshot-at-start: reversed, it matches
+   the own-seat draw sequence exactly on keep-7 games (verified; one
+   entry consumed by a non-draw removal — mill/tutor). A mulligan
+   reshuffles the deck and invalidates the order. Engineering guidance:
+   don't drive draws from deckOrder — drive them from CARD_DRAWN/
+   TURN_DRAW logs (fully named for the file's seat); treat deckOrder as
+   the deck multiset + a cross-check on keep-7 games.
+2. Opponent hidden info is REDACTED in perspective files: 0 of 13
+   opponent draw entries carried cardRefs in the probe; baseSnapshot's
+   opponent object has handCount/deckCount only. Materialize-on-reveal is
+   the right model; you can checkpoint opponent public state (field,
+   inkwell counts, discard) but never their hand/deck.
+
+Your privacy commitments (memory-only, no checked-in fixtures, verdicts
+name plays not hands, no fetching) are noted and held-to.

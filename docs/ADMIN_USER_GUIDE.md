@@ -1229,6 +1229,9 @@ All under `/api` at `:30710`. JSON unless noted. No auth.
 | `GET /market/movers?days=&min_price=&limit=&owned=&set_code=&finish=&rarity=&core_legal=&wantlist=&min_ci=` | `{as_of, rows}`: biggest percent moves per card+finish over the window, price-floored, filterable, each row with `ci` + `n_obs_30d`; `wantlist=true` restricts to want-list members (manual ∪ deck-derived); the price floor applies to the LARGER endpoint (a card rising through the floor counts — fixed 2026-09-08 after 13/99 foil vanished from a $5 run); suspect ticks excluded. |
 | `GET /collection/{card_id}/log` | Count audit trail, newest first (import filename/mode/note joined). |
 | `GET/PUT/DELETE /cards/nicknames[/{nick}]` | Shorthand registry rows (nick, printing, note). |
+| `GET /duels/replays` `?deck_id=&limit=&offset=` | Replay listing (game/date/result/opp_kind/link) — pick games without pulling bodies. |
+| `GET /duels/replays/{game_id}` | Decoded duels-replay-v1 JSON. Empirical format notes live in the endpoint docstring: `deckOrder` is BOTTOM-FIRST (draws off the END; verified on keep-7 games, non-draw removals consume entries; a mulligan reshuffles it away — drive draws from the logs), opponent draws fully redacted in perspective files. |
+| `GET /duels/replays/{game_id}/cardmap` | duels card id → base-printing ODIN identity for every referenced card (first-print id → name → base printing). |
 | `POST /duels/import-replay` | Upload one *.replay.gz; parses + stores (see §7.2 `duels_replays`). |
 | `POST /duels/import-history` | Raw CSV body: the duels.ink ledger import (see §7.2 `duels_games`). |
 | `GET /duels/coverage` | Ledger capture coverage; feeds the Match Log badge + MCP bias warnings. |

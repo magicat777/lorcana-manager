@@ -562,6 +562,97 @@ async def import_duels_history(request: Request):
     return duels_ledger.import_history(body, source_file=fname)
 
 
+@router.get("/duels/replays")
+def list_replays(deck_id: int = 0, limit: int = 50, offset: int = 0):
+    """Replay listing for consumers (sim replay validation): pick games
+    without pulling bodies."""
+    where, params = ["r.metrics IS NOT NULL"], []
+    if deck_id:
+        where.append("g.deck_id = %s")
+        params.append(deck_id)
+    return db.query(
+        f"""SELECT r.game_id, g.played_on_pt, g.result, g.opp_kind, g.deck_id,
+                  (g.opp_kind = 'bot') AS is_bot, g.ranked AS is_ranked,
+                  r.parse_version, g.match_row_id, g.your_lore, g.opp_lore,
+                  g.duels_turns
+           FROM duels_replays r JOIN duels_games g USING (game_id)
+           WHERE {' AND '.join(where)}
+           ORDER BY g.started_at DESC LIMIT %s OFFSET %s""",
+        params + [min(limit, 200), max(0, offset)])
+
+
+@router.get("/duels/replays/{game_id}")
+def get_replay(game_id: str):
+    """The decoded duels-replay-v1 JSON (frames, logs, baseSnapshot,
+    decklist) — the same object the parser consumes. LAN-only surface;
+    contains Jason's opening hand and deck order (consumers: never into
+    public repos or shared surfaces). Empirical format notes (2026-09-21):
+    baseSnapshot.myPlayer.deckOrder is BOTTOM-FIRST — draws come off the
+    END; verified exact on keep-7 games modulo non-draw removals (mill/
+    tutor consume entries). A mulligan reshuffles, invalidating the
+    snapshot order — drive draws from CARD_DRAWN/TURN_DRAW logs (fully
+    named for the file's own seat; the OPPONENT's draws are fully
+    redacted — 0 of 13 carried cardRefs in the probe)."""
+    import gzip as _gz, json as _json
+    row = db.query_one("SELECT raw_gz FROM duels_replays WHERE game_id = %s",
+                       (game_id,))
+    if not row:
+        raise HTTPException(404, "no stored replay for that game_id")
+    return _json.loads(_gz.decompress(bytes(row["raw_gz"])))
+
+
+@router.get("/duels/replays/{game_id}/cardmap")
+def replay_cardmap(game_id: str):
+    """duels card id -> ODIN identity for every card the replay references
+    (decklist + cardRefs). Resolution: duels id is the FIRST printing
+    (set_num-collector) -> full name -> the base/standard printing our
+    deck tooling prefers (base_card_id IS NULL, non-chase). Unresolvable
+    ids come back under 'unresolved'."""
+    import gzip as _gz, json as _json
+    row = db.query_one("SELECT raw_gz FROM duels_replays WHERE game_id = %s",
+                       (game_id,))
+    if not row:
+        raise HTTPException(404, "no stored replay for that game_id")
+    d = _json.loads(_gz.decompress(bytes(row["raw_gz"])))
+    ids: dict[str, str | None] = {}
+    for e in d.get("decklist") or []:
+        cid = str(e.get("cardId", "")) if isinstance(e, dict) else str(e)
+        if cid:
+            ids.setdefault(cid, None)
+    for x in (d.get("baseSnapshot", {}).get("myPlayer", {}).get("deckOrder") or []):
+        if isinstance(x, str):
+            ids.setdefault(x, None)
+    for lg in d.get("logs") or []:
+        for c in lg.get("cardRefs") or []:
+            if c.get("id"):
+                ids.setdefault(str(c["id"]), c.get("name"))
+    out, unresolved = {}, []
+    for cid, name in ids.items():
+        set_part, _, num = cid.partition("-")
+        hit = None
+        if set_part.isdigit() and num:
+            hit = db.query_one(
+                """SELECT c.full_name FROM cards c JOIN sets s ON s.id = c.set_id
+                   WHERE s.set_num = %s AND c.collector_number = %s""",
+                (int(set_part), num))
+        lookup_name = (hit or {}).get("full_name") or name
+        base = None
+        if lookup_name:
+            base = db.query_one(
+                """SELECT c.full_name, s.code AS set_code, c.collector_number
+                   FROM cards c JOIN sets s ON s.id = c.set_id
+                   WHERE lower(c.full_name) = lower(%s)
+                   ORDER BY (c.rarity IN ('Enchanted','Epic','Iconic','Illustrious')),
+                            (c.base_card_id IS NOT NULL),
+                            (NOT s.core_legal), s.released_at
+                   LIMIT 1""", (lookup_name,))
+        if base:
+            out[cid] = base
+        else:
+            unresolved.append(cid)
+    return {"game_id": game_id, "cards": out, "unresolved": unresolved}
+
+
 @router.post("/duels/import-replay")
 async def import_replay(request: Request, game_id: str = ""):
     """Upload one *.replay.gz (raw body). game_id query param optional —

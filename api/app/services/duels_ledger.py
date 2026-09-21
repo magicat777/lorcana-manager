@@ -197,6 +197,31 @@ def import_history(csv_text: str, source_file: str = "upload") -> dict:
                 updated += 1
             if match_row_id:
                 linked += 1
+        # pass 2 (handoff §2.2's own method): unlinked rows -> match rows by
+        # (event date, deck, single-game result), only when exactly one
+        # unclaimed candidate exists — shorthand-logged rounds have no
+        # stored log for the lore-fingerprint pass to hit
+        cur.execute(
+            """SELECT g.game_id, g.played_on_pt, g.deck_id, g.result
+               FROM duels_games g
+               WHERE g.match_row_id IS NULL AND g.result IN ('win','loss')
+                 AND g.deck_id IS NOT NULL""")
+        for g in cur.fetchall():
+            want = '1-0' if g["result"] == 'win' else '0-1'
+            cur.execute(
+                """SELECT m.id FROM matches m JOIN events e ON e.id = m.event_id
+                   WHERE e.date = %s AND e.deck_id = %s AND m.result = %s
+                     AND NOT EXISTS (SELECT 1 FROM duels_games g2
+                                     WHERE g2.match_row_id = m.id)""",
+                (g["played_on_pt"], g["deck_id"], want))
+            c = cur.fetchall()
+            if len(c) == 1:
+                cur.execute("UPDATE duels_games SET match_row_id=%s WHERE game_id=%s",
+                            (c[0]["id"], g["game_id"]))
+                linked += 1
+            elif len(c) > 1:
+                ambiguous_links.append({"game_id": g["game_id"],
+                                        "candidates": [x["id"] for x in c]})
         conn.commit()
 
     return {"added": added, "updated": updated, "linked": linked,

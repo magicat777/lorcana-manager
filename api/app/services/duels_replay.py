@@ -20,6 +20,9 @@ KNOWN_ACTIONS = {
     "CHOOSE_STARTING_PLAYER", "MULLIGAN", "ADD_TO_INK", "PLAY_CARD", "QUEST",
     "ATTACK", "ACTIVATE_ABILITY", "RESPOND_TO_PROMPT", "END_TURN", "CONCEDE",
     "GAME_FINISH",
+    # observed in the first real backfill (2026-09-20), absent from the
+    # handoff's one-file survey:
+    "BOOST", "MOVE_TO_LOCATION",
 }
 KNOWN_LOGS = {
     "INITIAL_HAND", "MULLIGAN", "GAME_START", "TURN_START", "TURN_READY",
@@ -54,7 +57,8 @@ def parse_replay(gz_bytes: bytes) -> tuple[dict, list[str]]:
     for f in frames:
         at = str(f.get("actionType") or "")
         p = f.get("player")
-        if at.startswith("FREE_UNDO"):
+        # real files carry both "FREE_UNDO:<seq>" and plain "UNDO:<seq>"
+        if at.startswith(("FREE_UNDO", "UNDO:")):
             if p in (1, 2):
                 undo_counts[p] += 1
             continue

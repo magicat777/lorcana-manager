@@ -20,8 +20,13 @@ from .. import config
 from ..services.duels_replay import PARSE_VERSION, parse_replay
 
 UA = {"User-Agent": "lorcana-manager/1.0 (personal collection tool; "
-                    "one-time backfill of the owner's own replays; ~1 req/s)"}
-DELAY_S = 1.0
+                    "one-time backfill of the owner's own replays; slow)"}
+# First real run (2026-09-20): 429 after ~5 fetches at 1 req/s — their
+# limiter is stricter than robots suggested. 429 is backpressure, not a
+# block: honor Retry-After, pace at 10s, back off exponentially, give up
+# only when a long backoff still 429s. 403 remains an immediate stop.
+DELAY_S = 10.0
+MAX_BACKOFF_S = 300
 
 
 def main() -> int:
@@ -40,11 +45,28 @@ def main() -> int:
         with conn.cursor() as cur:
             for t in targets:
                 time.sleep(DELAY_S)
-                r = client.get(f"https://duels.ink/r/{t['replay_id']}")
-                if r.status_code in (403, 429):
-                    print(f"[LORE] duels.ink returned {r.status_code} — STOPPING. "
-                          "Per the approval terms we do not work around blocks; "
-                          "ask the maintainers before retrying.", flush=True)
+                backoff = DELAY_S
+                while True:
+                    r = client.get(f"https://duels.ink/r/{t['replay_id']}")
+                    if r.status_code != 429:
+                        break
+                    retry_after = r.headers.get("Retry-After")
+                    wait = min(MAX_BACKOFF_S,
+                               int(retry_after) if (retry_after or "").isdigit()
+                               else backoff * 2)
+                    if wait >= MAX_BACKOFF_S and backoff >= MAX_BACKOFF_S:
+                        print("[LORE] 429 persists after max backoff — stopping; "
+                              "re-run later, already-fetched replays are cached.",
+                              flush=True)
+                        conn.commit()
+                        return 1
+                    print(f"  429 — backing off {wait}s", flush=True)
+                    time.sleep(wait)
+                    backoff = wait
+                if r.status_code == 403:
+                    print("[LORE] duels.ink returned 403 — STOPPING. Per the "
+                          "approval terms we do not work around blocks; ask the "
+                          "maintainers before retrying.", flush=True)
                     conn.commit()
                     return 1
                 if r.status_code != 200:

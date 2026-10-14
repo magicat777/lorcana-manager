@@ -549,3 +549,19 @@ derives first_player from the first non-undone TURN_START log (your rule);
 corpus re-parsed, and the derivation cross-checks 77/77 against the
 ledger's independent went_first column — treat that as validation for
 your TURN_START rule too. metrics now carry first_player_source.
+
+## Set 14 Hyperia City seeded + CR 2.3.0 (2026-10-14)
+
+For the next sim session (no live session to message today):
+- Set 14 is in ODIN (242 cards, Core-legal, releases 2026-10-16). Runbook
+  step 7 applies: every playable card needs an engine spec; flag NEW
+  keywords/mechanics first — spec authoring blocks on engine support.
+  lorcana_coverage_priority ranks what to spec once usage data lands.
+- CR 2.3.0 (effective 2026-10-16) renames: "Beginning Phase" → Start-of-
+  turn phrasing, "restriction" → "limiter". If engine code/specs quote CR
+  terms, update them; numbering largely held (573 rules). Glossary now has
+  noun/verb dual entries — rules citations like 'discard (verb)' resolve.
+- Data-model: Lorcast added a real P4, so odin_p4_* card ids are GONE
+  (counts migrated to crd_* rows). Deck rows were always base-normalized,
+  so checked-in deck snapshots are unaffected. odin_pd1_17 remains,
+  base-linked to Beanstalk 14/102.

@@ -33,8 +33,8 @@ CREATE INDEX IF NOT EXISTS sealed_price_obs_idx
 -- trove whose 75% premium prompted the signal. Trove MSRP $49.99; a 24-pack
 -- booster display at $5.99/pack lists for $143.76.
 INSERT INTO sealed_products (name, set_code, kind, msrp) VALUES
-  -- Hyperia MSRPs assume set-13 pricing ($5.99/pack, $49.99 trove) —
-  -- correct here if Ravensburger changed it (2026-10-14).
+  -- Hyperia MSRPs confirmed unchanged from set 13 ($5.99/pack, $49.99
+  -- trove) — Jason verified 2026-10-14.
   ('Hyperia City booster box',             '14', 'booster_box', 143.76),
   ('Hyperia City Illumineer''s Trove',     '14', 'trove',        49.99),
   ('Attack of the Vine! booster box',      '13', 'booster_box', 143.76),

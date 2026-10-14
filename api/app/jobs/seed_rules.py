@@ -108,14 +108,25 @@ def parse_cr(text: str) -> tuple[dict, list[dict]]:
 
     term: str | None = None
     parts = []
+    # Oct-2026 CR restructured the glossary to 'term: definition' on one
+    # line (wrapped continuations below); earlier CRs put the term on its
+    # own line. Support both. 'Example:'/'Note:' are definition content,
+    # never terms.
+    _INLINE_TERM = re.compile(r'^(?!\d)([^:.]{1,60}?):\s+(\S.*)$')
     for ln in body[gl_start + 1:gl_end]:
         s = _clean(ln)
         if not s:
             continue
-        # term lines: short, few words, no sentence-final punctuation — a
-        # wrapped definition tail like '"[A]. If you do, [B]."' ends in a
-        # quote and must not become a term
-        if (len(s) <= 60 and len(s.split()) <= 6 and not s[0].isdigit()
+        im = _INLINE_TERM.match(s)
+        if (im and len(im.group(1).split()) <= 6
+                and im.group(1).strip() not in ('Example', 'Examples', 'Note')):
+            if term:
+                emit('glossary', term, term, parts)
+            term, parts = im.group(1).strip(), [im.group(2)]
+        # legacy format: short standalone term line, no sentence-final
+        # punctuation — a wrapped tail like '"[A]. If you do, [B]."' ends
+        # in a quote and must not become a term
+        elif (len(s) <= 60 and len(s.split()) <= 6 and not s[0].isdigit()
                 and not s.endswith(('.', '!', '?', ':', ',', '”', '"', '’'))):
             if term:
                 emit('glossary', term, term, parts)
@@ -124,6 +135,24 @@ def parse_cr(text: str) -> tuple[dict, list[dict]]:
             parts.append(s)
     if term:
         emit('glossary', term, term, parts)
+
+    # CR 2.3.0 (Oct 2026) split some terms into noun/verb dual entries
+    # ('discard', 'ink', 'ready', 'stack') — PK is (kind, key), so suffix
+    # colliding keys with the part of speech their body self-declares.
+    from collections import Counter as _Counter
+    dup_keys = {k for k, n in _Counter((r['kind'], r['key']) for r in rows).items()
+                if n > 1}
+    seen_n: dict = {}
+    for r in rows:
+        if (r['kind'], r['key']) in dup_keys:
+            lead = r['body'].split('.', 1)[0].strip().lower()
+            if lead in ('noun', 'verb', 'adjective', 'adverb'):
+                r['key'] = f"{r['key']} ({lead})"
+            else:
+                seen_n[r['key']] = seen_n.get(r['key'], 0) + 1
+                if seen_n[r['key']] > 1:
+                    r['key'] = f"{r['key']} ({seen_n[r['key']]})"
+            r['title'] = r['key'] if r['kind'] == 'glossary' else r['title']
 
     n_rules = sum(1 for r in rows if r['kind'] == 'rule')
     n_gloss = sum(1 for r in rows if r['kind'] == 'glossary')
@@ -140,12 +169,27 @@ def discover_url(client: httpx.Client) -> str:
     if config.CR_URL:
         return config.CR_URL
     page = client.get(config.CR_RESOURCES_URL).text
+    # Historical filename pattern first.
     m = re.search(r'https://files\.disneylorcana\.com/Comprehensive-Rules[^"\'\s<>]*\.pdf',
                   page)
-    if not m:
-        raise RuntimeError('could not discover the CR PDF link on the resources page '
-                           '— set LORCANA_CR_URL explicitly')
-    return m.group(0)
+    if m:
+        return m.group(0)
+    # 2026-10-14: Ravensburger renamed the file (CRUpdate_EN_Oct-2026.pdf),
+    # so anchor on the "Comprehensive Rules" accordion instead and take the
+    # English link inside it — filename-agnostic.
+    idx = page.find('Comprehensive Rules')
+    if idx >= 0:
+        section = page[idx:idx + 4000]
+        for href in re.finditer(
+                r'href="(https://files\.disneylorcana\.com/[^"]+\.pdf)"[^>]*>'
+                r'[^<]*(?:English|EN)', section):
+            return href.group(1)
+        for href in re.finditer(
+                r'https://files\.disneylorcana\.com/[^"\'\s<>]*_EN[_-][^"\'\s<>]*\.pdf',
+                section):
+            return href.group(0)
+    raise RuntimeError('could not discover the CR PDF link on the resources page '
+                       '— set LORCANA_CR_URL explicitly')
 
 
 def main() -> int:

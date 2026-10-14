@@ -10,4 +10,4 @@
 ALTER TABLE sets ADD COLUMN IF NOT EXISTS rotation_est date;
 
 UPDATE sets SET rotation_est = DATE '2027-07-01' WHERE set_num BETWEEN 9 AND 12;
-UPDATE sets SET rotation_est = DATE '2028-07-01' WHERE set_num = 13;
+UPDATE sets SET rotation_est = DATE '2028-07-01' WHERE set_num IN (13, 14);  -- 14: same season block, est. 2026-10-14

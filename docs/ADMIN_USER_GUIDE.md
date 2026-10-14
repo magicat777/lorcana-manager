@@ -560,7 +560,17 @@ Details that matter:
 
 ### 6.6 Runbook: new set release
 
-(next up: set 14 — Hyperia City, October 2026)
+(last run: set 14 — Hyperia City, 2026-10-14, two days pre-release; next
+up: set 15. Lessons that became permanent fixes that day: Lorcast ADDED
+their own P4 — the seed crashed on sets_code_key until mig 044 retired our
+odin_p4 rows and mig 038's inserts were gated; Ravensburger RENAMED the CR
+PDF (CRUpdate_EN_Oct-2026.pdf) — discovery now anchors on the resources
+page's "Comprehensive Rules" accordion + English label, filename-agnostic;
+CR 2.3.0 moved the glossary to inline 'term: definition' lines and split
+discard/ink/ready/stack into noun/verb dual entries — parser handles both
+formats and suffixes colliding keys. Lorcast also gained a Q3
+"Illumineer's Quest" set — data-driven surfaces picked it up with zero
+changes.)
 
 1. `kubectl -n lorcana delete job lorcana-seed --ignore-not-found && kubectl apply -f deploy/jobs/seed-job.yaml` — pulls the new set + cards
    (schema-free: classifications, keywords, images, and the numeric set alias
@@ -766,6 +776,7 @@ the prefix (2026-09-15). When Dreamborn invents a new label, add a row to
 | Import rejects a promo as `ambiguous name … in set 'NNN'` with a number like `22/P3` | Dreamborn files promos under the BASE set with a compound number (`010` + `22/P3` = promo set P3, collector 22). The matcher parses this since 2026-09-15 (4x Elsa 22/P3 was the find); if a NEW promo-set suffix appears, it just needs a `set_aliases` row. The reject list catching it is the system working — never hand-edit counts around it; fix the cause and re-import. |
 | Claude Desktop (or any LAN client) can't reach the MCP / webui by the `.local` name, but the pod is healthy and localhost works | mDNS is serving dead IPv6 addresses. avahi's `use-ipv6=no` only disables the IPv6 TRANSPORT — it still publishes AAAA records over IPv4 mDNS (`publish-aaaa-on-ipv4` defaults to yes), so clients resolve the ULA/privacy addresses that k3s NodePorts (IPv4-only) never answer, churning daily with address rotation. Fix (applied 2026-09-14): `publish-aaaa-on-ipv4=no` under `[publish]` in `/etc/avahi/avahi-daemon.conf`, restart avahi — the journal should then register ONLY the two IPv4 records. Diagnose with `journalctl -u avahi-daemon \| grep Registering`. |
 | Grafana dashboard reverted to an old version after a reboot/pod restart | The `init-dashboards` initContainer replays the `grafana-dashboards-shared` ConfigMap over the PVC's `shared/` folder on every pod start — a `kubectl cp`-only deploy lives on the PVC and gets clobbered. Recover: the current JSON is in the grafana-gitops-live repo (git is the real source of truth); run `./deploy-lorcana.sh` there, which patches the ConfigMap AND cp's the live file. The earlier belief "folder configmaps are NOT mounted" was wrong in the way that matters: not mounted in the main container, but fed to the initContainer. |
+| New-set seed crashes on `sets_code_key` | Lorcast added a set whose code collides with an ODIN-authored one (P4, 2026-10-14). Fix pattern: mig 044 — free the code (rename), seed, then the migration's phase B migrates counts/log to the crd_* rows and deletes the odin rows; gate the authoring migration's inserts so re-runs can't resurrect them. |
 | Practice losses read 0 in match stats | Fixed 2026-09-18: the loss filter was a stale inline `('1-2','0-2')` missing duels' single-game `'0-1'` (LOSS_RESULTS had it; line 344 predated the constant). Same day: mono-ink opponents rendered `Steel/Steel` — ink-pair expressions now collapse to the single ink. Both patterns also lived in brief.py's meta section. |
 | A card's count looks wrong ("I can't find 3 of my 4 Kangas") | `lorcana_card_audit('13/23')` (or ⏱ count history on the card page): shows every count change with its source. Replace-mode import rows MIRROR the scan file — a jump there means the SCAN claimed that count (Dreamborn scanner miscounts are the usual culprit); manual edits show as webui/mcp. If the log doesn't explain it, the count predates 2026-08-04 or an untracked pre-2026-09-10 manual edit. Fix counts via a corrected re-scan (replace mode) so the fix itself is audited. |
 | Grafana stacked-timeseries series stack in the wrong order | SQL `ORDER BY` cannot control it: the long→wide conversion ALPHABETIZES series by label and discards row order (proven with a synthetic query, 2026-09-16). Encode the desired order in the label — the by-set value panel uses a zero-padded `dense_rank()` prefix (`01 ·` = largest set, bottom of stack). Don't "clean up" such prefixes. |

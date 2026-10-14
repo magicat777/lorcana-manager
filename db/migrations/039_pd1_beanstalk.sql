@@ -35,3 +35,10 @@ INSERT INTO collection_log (card_id, source, before_normal, before_foil,
                             after_normal, after_foil)
 SELECT 'odin_pd1_17', 'api', 0, 0, 1, 0
 WHERE NOT EXISTS (SELECT 1 FROM collection_log WHERE card_id = 'odin_pd1_17');
+
+-- Face-unknowns resolved against the published base card 14/102
+-- (2026-10-14, set-14 seed day): lore 0 (genuinely no-lore), inkwell true.
+-- Body text matched our transcription verbatim. The INSERT above is
+-- ON CONFLICT DO NOTHING, so corrections ride this idempotent UPDATE.
+UPDATE cards SET lore = 0, inkwell = true, updated_at = now()
+WHERE id = 'odin_pd1_17' AND (lore IS DISTINCT FROM 0 OR inkwell IS DISTINCT FROM true);

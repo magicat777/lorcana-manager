@@ -15,15 +15,19 @@ CREATE INDEX IF NOT EXISTS cards_base_card_idx ON cards (base_card_id)
   WHERE base_card_id IS NOT NULL;
 
 -- Set P4. released_at = Attack of the Vine launch (the P4 wave's era).
+-- GATED 2026-10-14: Lorcast added a real P4 (mig 044 retires these rows);
+-- never re-create once their set exists.
 INSERT INTO sets (id, code, name, released_at, set_num, core_legal, raw, updated_at)
-VALUES ('set_odin_p4', 'P4', 'Promo Set 4', DATE '2026-07-17', NULL, false,
+SELECT 'set_odin_p4', 'P4', 'Promo Set 4', DATE '2026-07-17', NULL, false,
         '{"origin": "odin-local", "reason": "Lorcast has no P4 as of 2026-09-11"}'::jsonb,
-        now())
+        now()
+WHERE NOT EXISTS (SELECT 1 FROM sets WHERE code = 'P4' AND id <> 'set_odin_p4')
 ON CONFLICT (id) DO NOTHING;
 
--- Dreamborn import labels for the next scan sync.
-INSERT INTO set_aliases (alias, set_id) VALUES
-  ('p4', 'set_odin_p4'), ('promo set 4', 'set_odin_p4')
+-- Dreamborn import labels for the next scan sync (gated with the set).
+INSERT INTO set_aliases (alias, set_id)
+SELECT a, 'set_odin_p4' FROM (VALUES ('p4'), ('promo set 4')) AS v(a)
+WHERE EXISTS (SELECT 1 FROM sets WHERE id = 'set_odin_p4')
 ON CONFLICT DO NOTHING;
 
 -- The three known P4 printings, fields mirrored from their base cards
@@ -47,6 +51,7 @@ FROM (VALUES
 ) AS v(new_id, num, base_set, base_num)
 JOIN sets bs ON bs.code = v.base_set
 JOIN cards b ON b.set_id = bs.id AND b.collector_number = v.base_num
+WHERE EXISTS (SELECT 1 FROM sets WHERE id = 'set_odin_p4')
 ON CONFLICT (id) DO NOTHING;
 
 -- Promo alt-art images (2026-09-11): Lorcast has none; these hotlink
@@ -90,12 +95,16 @@ WHERE p.id = m.promo_id AND p.base_card_id IS NULL;
 
 -- Jason's P4 holdings as of the handoff (Morph x1, Meilin x1, Randall x2).
 -- ON CONFLICT DO NOTHING: a later Dreamborn replace-scan owns these counts.
-INSERT INTO collection (card_id, qty_normal, qty_foil) VALUES
-  ('odin_p4_9', 1, 0), ('odin_p4_10', 1, 0), ('odin_p4_11', 2, 0)
+-- Gated with the set (mig 044 retired the odin rows 2026-10-14).
+INSERT INTO collection (card_id, qty_normal, qty_foil)
+SELECT v.id, v.n, 0
+FROM (VALUES ('odin_p4_9', 1), ('odin_p4_10', 1), ('odin_p4_11', 2)) AS v(id, n)
+WHERE EXISTS (SELECT 1 FROM cards WHERE id = v.id)
 ON CONFLICT (card_id) DO NOTHING;
 
 INSERT INTO collection_log (card_id, source, before_normal, before_foil,
                             after_normal, after_foil)
 SELECT v.id, 'api', 0, 0, v.n, 0
 FROM (VALUES ('odin_p4_9', 1), ('odin_p4_10', 1), ('odin_p4_11', 2)) AS v(id, n)
-WHERE NOT EXISTS (SELECT 1 FROM collection_log cl WHERE cl.card_id = v.id);
+WHERE EXISTS (SELECT 1 FROM cards WHERE id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM collection_log cl WHERE cl.card_id = v.id);

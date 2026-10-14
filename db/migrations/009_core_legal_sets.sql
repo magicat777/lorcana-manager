@@ -12,4 +12,4 @@ ALTER TABLE sets ADD COLUMN IF NOT EXISTS core_legal boolean NOT NULL DEFAULT fa
 -- COALESCE: promo/special sets have set_num NULL -> not core-legal as a set
 -- (promo prints of legal cards are a per-card question; deck lists built from
 -- main-set prints are unaffected).
-UPDATE sets SET core_legal = COALESCE(set_num BETWEEN 9 AND 13, false);
+UPDATE sets SET core_legal = COALESCE(set_num BETWEEN 9 AND 14, false);  -- 14 added 2026-10-14 (Hyperia City)

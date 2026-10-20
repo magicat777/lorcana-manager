@@ -96,6 +96,7 @@ def search_cards(
     q: str = "",
     set: str = "",
     ink: str = "",
+    ink_mode: str = Query("any", pattern="^(any|legal)$"),
     rarity: str = "",
     type: str = "",
     tags: str = "",
@@ -116,9 +117,12 @@ def search_cards(
         where.append("s.code = ANY(%s)")
         params.append([s.strip() for s in set.split(",") if s.strip()])
     if ink:
-        # Comma-separated inks; a card matches if it carries ANY of them
-        # (a dual-ink card matches on either face — && is array overlap).
-        where.append("c.inks && %s")
+        # Comma-separated inks. Default 'any': a card matches if it carries
+        # ANY of them (a dual-ink card matches on either face — && is array
+        # overlap). 'legal' is deck-legality: EVERY ink on the card must be
+        # among the selected (<@ containment), so an off-pair dual like
+        # Sapphire/Emerald drops out of a Sapphire+Steel pool.
+        where.append("c.inks <@ %s" if ink_mode == "legal" else "c.inks && %s")
         params.append([i.strip() for i in ink.split(",") if i.strip()])
     if rarity:
         where.append("c.rarity = %s")

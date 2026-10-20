@@ -4,3 +4,5 @@ __pycache__/
 node_modules/
 web/dist/
 .env
+# Ravensburger/Disney documents (copyrighted — never commit to this public repo)
+*.pdf

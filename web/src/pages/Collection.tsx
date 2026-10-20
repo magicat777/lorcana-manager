@@ -166,8 +166,8 @@ function MultiFilter({ allLabel, options, value, onChange, minWidth = 200 }: {
 const FILTER_KEY = 'cards.filters'
 
 const loadFilters = () => {
-  const base = { q: '', sets: [] as string[], inks: [] as string[], rarity: '',
-                 tags: [] as string[], lore: '', owned: 'all', core: false, page: 1 }
+  const base = { q: '', sets: [] as string[], inks: [] as string[], deckLegal: false,
+                 rarity: '', tags: [] as string[], lore: '', owned: 'all', core: false, page: 1 }
   try {
     const saved = JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}')
     // pre-multiselect tabs stored single-value `set`/`ink` strings
@@ -192,6 +192,7 @@ export default function Collection() {
   const [q, setQ] = useState<string>(saved.q)
   const [setSel, setSetSel] = useState<string[]>(saved.sets)
   const [inkSel, setInkSel] = useState<string[]>(saved.inks)
+  const [deckLegal, setDeckLegal] = useState<boolean>(saved.deckLegal)
   const [rarity, setRarity] = useState<string>(saved.rarity)
   const [tags, setTags] = useState<string[]>(saved.tags)
   const [lore, setLore] = useState<string>(saved.lore)
@@ -208,18 +209,22 @@ export default function Collection() {
 
   // Filters survive card-detail visits / browser back until Reset (per tab).
   useEffect(() => {
-    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, sets: setSel, inks: inkSel, rarity, tags, lore, owned, core, page }))
-  }, [q, setSel, inkSel, rarity, tags, lore, owned, core, page])
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, sets: setSel, inks: inkSel, deckLegal, rarity, tags, lore, owned, core, page }))
+  }, [q, setSel, inkSel, deckLegal, rarity, tags, lore, owned, core, page])
 
-  const hasFilters = q !== '' || setSel.length > 0 || inkSel.length > 0 || rarity !== '' || tags.length > 0 || lore !== '' || owned !== 'all' || core
+  const hasFilters = q !== '' || setSel.length > 0 || inkSel.length > 0 || deckLegal || rarity !== '' || tags.length > 0 || lore !== '' || owned !== 'all' || core
   const resetFilters = () => {
     sessionStorage.removeItem(FILTER_KEY)
-    setQ(''); setSetSel([]); setInkSel([]); setRarity(''); setTags([]); setLore(''); setOwned('all'); setCore(false); setPage(1)
+    setQ(''); setSetSel([]); setInkSel([]); setDeckLegal(false); setRarity(''); setTags([]); setLore(''); setOwned('all'); setCore(false); setPage(1)
   }
 
   useEffect(() => {
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q, set: setSel.join(','), ink: inkSel.join(','), rarity, tags: tags.join(','), lore, owned, page, ...(core ? { core: 'true' } : {}) })
+      get<SearchResult>('/cards', {
+        q, set: setSel.join(','), ink: inkSel.join(','), rarity, tags: tags.join(','), lore, owned, page,
+        ...(core ? { core: 'true' } : {}),
+        ...(deckLegal && inkSel.length ? { ink_mode: 'legal' } : {}),
+      })
         .then((d) => {
           setData(d)
           setError('')
@@ -227,7 +232,7 @@ export default function Collection() {
         .catch((e) => setError(String(e)))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, setSel, inkSel, rarity, tags, lore, owned, core, page])
+  }, [q, setSel, inkSel, deckLegal, rarity, tags, lore, owned, core, page])
 
   const reset = () => setPage(1)
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1
@@ -251,6 +256,14 @@ export default function Collection() {
         <MultiFilter allLabel="All inks" minWidth={160}
           options={INKS.map((i) => ({ value: i, label: i, icon: inkIcon(i) }))}
           value={inkSel} onChange={(v) => { setInkSel(v); reset() }} />
+        {inkSel.length > 0 && (
+          <label className="muted" style={{ cursor: 'pointer' }}
+            title="Only cards playable in a deck of exactly the selected inks — hides dual-ink cards carrying an off-pair ink">
+            <input type="checkbox" checked={deckLegal}
+              onChange={(e) => { setDeckLegal(e.target.checked); reset() }} />
+            {' '}Deck-legal inks
+          </label>
+        )}
         <RarityFilter value={rarity} onChange={(r) => { setRarity(r); reset() }} />
         <TagFilter all={allTags} value={tags} onChange={(t) => { setTags(t); reset() }} />
         <select value={lore} onChange={(e) => { setLore(e.target.value); reset() }}

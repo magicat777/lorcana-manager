@@ -18,7 +18,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: replay-fetch
-          image: localhost:30500/lorcana/api:fastapi-20261020-lorcana-51-1
+          image: localhost:30500/lorcana/api:fastapi-20261020-lorcana-51-2
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "app.jobs.fetch_replays"]
           envFrom:

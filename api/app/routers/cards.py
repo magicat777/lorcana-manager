@@ -112,11 +112,14 @@ def search_cards(
         where.append("(c.full_name ILIKE %s OR c.body_text ILIKE %s)")
         params += [f"%{q}%", f"%{q}%"]
     if set:
-        where.append("s.code = %s")
-        params.append(set)
+        # Comma-separated set codes; card matches ANY of them.
+        where.append("s.code = ANY(%s)")
+        params.append([s.strip() for s in set.split(",") if s.strip()])
     if ink:
-        where.append("%s = ANY(c.inks)")
-        params.append(ink)
+        # Comma-separated inks; a card matches if it carries ANY of them
+        # (a dual-ink card matches on either face — && is array overlap).
+        where.append("c.inks && %s")
+        params.append([i.strip() for i in ink.split(",") if i.strip()])
     if rarity:
         where.append("c.rarity = %s")
         params.append(rarity)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { get } from '../api'
 import { useRef } from 'react'
-import CardGrid from '../components/CardGrid'
+import CardGrid, { inkIcon } from '../components/CardGrid'
 import Hero from '../components/Hero'
 import RarityIcon from '../components/RarityIcon'
 import type { SearchResult, SetInfo } from '../types'
@@ -105,16 +105,83 @@ function TagFilter({ all, value, onChange }: {
   )
 }
 
+// Generic checkbox dropdown for OR-semantics multi-selects (sets, inks):
+// a card matches when it carries ANY of the selected values.
+function MultiFilter({ allLabel, options, value, onChange, minWidth = 200 }: {
+  allLabel: string
+  options: { value: string; label: string; icon?: string }[]
+  value: string[]
+  onChange: (v: string[]) => void
+  minWidth?: number
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  const toggle = (v: string) =>
+    onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v])
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="secondary" onClick={() => setOpen(!open)}
+        style={{ fontWeight: 400 }}>
+        {value.length ? value.join(' + ') : allLabel} <span className="muted">▾</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30,
+          background: 'var(--panel)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: 4, minWidth, maxHeight: 340,
+          overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+        }}>
+          {value.length > 0 && (
+            <div className="dropdown-opt muted" onClick={() => onChange([])}
+              style={{ padding: '0.35rem 0.6rem', cursor: 'pointer', borderRadius: 6 }}>
+              ✕ Clear
+            </div>
+          )}
+          {options.map((o) => (
+            <label key={o.value} className="dropdown-opt"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '0.3rem 0.6rem',
+                cursor: 'pointer', borderRadius: 6, whiteSpace: 'nowrap',
+                background: value.includes(o.value) ? 'var(--bg2)' : undefined,
+              }}>
+              <input type="checkbox" checked={value.includes(o.value)}
+                onChange={() => toggle(o.value)} />
+              {o.icon && <img src={o.icon} alt="" style={{ width: 16, height: 16, flexShrink: 0 }} />}
+              <span style={{ flex: 1 }}>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const FILTER_KEY = 'cards.filters'
 
 const loadFilters = () => {
+  const base = { q: '', sets: [] as string[], inks: [] as string[], rarity: '',
+                 tags: [] as string[], lore: '', owned: 'all', core: false, page: 1 }
   try {
-    return { q: '', set: '', ink: '', rarity: '', tags: [] as string[], lore: '',
-             owned: 'all', core: false, page: 1,
-             ...JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}') }
+    const saved = JSON.parse(sessionStorage.getItem(FILTER_KEY) ?? '{}')
+    // pre-multiselect tabs stored single-value `set`/`ink` strings
+    if (typeof saved.set === 'string') {
+      if (saved.set) saved.sets = [saved.set]
+      delete saved.set
+    }
+    if (typeof saved.ink === 'string') {
+      if (saved.ink) saved.inks = [saved.ink]
+      delete saved.ink
+    }
+    return { ...base, ...saved }
   } catch {
-    return { q: '', set: '', ink: '', rarity: '', tags: [] as string[], lore: '',
-             owned: 'all', core: false, page: 1 }
+    return base
   }
 }
 
@@ -123,8 +190,8 @@ export default function Collection() {
   const [sets, setSets] = useState<SetInfo[]>([])
   const [allTags, setAllTags] = useState<{ tag: string; cards: number }[]>([])
   const [q, setQ] = useState<string>(saved.q)
-  const [set, setSet] = useState<string>(saved.set)
-  const [ink, setInk] = useState<string>(saved.ink)
+  const [setSel, setSetSel] = useState<string[]>(saved.sets)
+  const [inkSel, setInkSel] = useState<string[]>(saved.inks)
   const [rarity, setRarity] = useState<string>(saved.rarity)
   const [tags, setTags] = useState<string[]>(saved.tags)
   const [lore, setLore] = useState<string>(saved.lore)
@@ -141,18 +208,18 @@ export default function Collection() {
 
   // Filters survive card-detail visits / browser back until Reset (per tab).
   useEffect(() => {
-    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, set, ink, rarity, tags, lore, owned, core, page }))
-  }, [q, set, ink, rarity, tags, lore, owned, core, page])
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ q, sets: setSel, inks: inkSel, rarity, tags, lore, owned, core, page }))
+  }, [q, setSel, inkSel, rarity, tags, lore, owned, core, page])
 
-  const hasFilters = q !== '' || set !== '' || ink !== '' || rarity !== '' || tags.length > 0 || lore !== '' || owned !== 'all' || core
+  const hasFilters = q !== '' || setSel.length > 0 || inkSel.length > 0 || rarity !== '' || tags.length > 0 || lore !== '' || owned !== 'all' || core
   const resetFilters = () => {
     sessionStorage.removeItem(FILTER_KEY)
-    setQ(''); setSet(''); setInk(''); setRarity(''); setTags([]); setLore(''); setOwned('all'); setCore(false); setPage(1)
+    setQ(''); setSetSel([]); setInkSel([]); setRarity(''); setTags([]); setLore(''); setOwned('all'); setCore(false); setPage(1)
   }
 
   useEffect(() => {
     const t = setTimeout(() => {
-      get<SearchResult>('/cards', { q, set, ink, rarity, tags: tags.join(','), lore, owned, page, ...(core ? { core: 'true' } : {}) })
+      get<SearchResult>('/cards', { q, set: setSel.join(','), ink: inkSel.join(','), rarity, tags: tags.join(','), lore, owned, page, ...(core ? { core: 'true' } : {}) })
         .then((d) => {
           setData(d)
           setError('')
@@ -160,7 +227,7 @@ export default function Collection() {
         .catch((e) => setError(String(e)))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, set, ink, rarity, tags, lore, owned, core, page])
+  }, [q, setSel, inkSel, rarity, tags, lore, owned, core, page])
 
   const reset = () => setPage(1)
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1
@@ -178,18 +245,12 @@ export default function Collection() {
             reset()
           }}
         />
-        <select value={set} onChange={(e) => { setSet(e.target.value); reset() }}>
-          <option value="">All sets</option>
-          {sets.map((s) => (
-            <option key={s.id} value={s.code}>
-              {s.code} — {s.name}
-            </option>
-          ))}
-        </select>
-        <select value={ink} onChange={(e) => { setInk(e.target.value); reset() }}>
-          <option value="">All inks</option>
-          {INKS.map((i) => <option key={i}>{i}</option>)}
-        </select>
+        <MultiFilter allLabel="All sets" minWidth={260}
+          options={sets.map((s) => ({ value: s.code, label: `${s.code} — ${s.name}` }))}
+          value={setSel} onChange={(v) => { setSetSel(v); reset() }} />
+        <MultiFilter allLabel="All inks" minWidth={160}
+          options={INKS.map((i) => ({ value: i, label: i, icon: inkIcon(i) }))}
+          value={inkSel} onChange={(v) => { setInkSel(v); reset() }} />
         <RarityFilter value={rarity} onChange={(r) => { setRarity(r); reset() }} />
         <TagFilter all={allTags} value={tags} onChange={(t) => { setTags(t); reset() }} />
         <select value={lore} onChange={(e) => { setLore(e.target.value); reset() }}

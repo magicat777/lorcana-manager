@@ -33,6 +33,11 @@ interface BriefData {
       ceiling: number | null; weeks_left: number | null
       trigger: 'buy' | 'momentum' | 'dip' | 'hot-set' | null
     }[]
+    new_set_floor: {
+      set_code: string; name: string; released_at: string; days_priced: number
+      total_now: number; total_peak: number; drop_pct: number
+      week_pct: number | null; state: 'early' | 'falling' | 'forming' | 'floor' | 'rising'
+    }[]
     params: { weekly_budget_usd: number; rotation_horizon_years: number }
   }
   collection: { unique_owned: number; total_copies: number; value: string }
@@ -157,9 +162,31 @@ export default function Brief() {
         </div>
       )}
 
-      {(b.market?.sealed.length > 0 || b.market?.singles.length > 0) && (
+      {(b.market?.sealed.length > 0 || b.market?.singles.length > 0
+        || (b.market?.new_set_floor?.length ?? 0) > 0) && (
         <div className="panel">
           <h3 style={{ marginTop: 0 }}>Market signals</h3>
+          {(b.market.new_set_floor ?? []).map((f) => {
+            const FLOOR: Record<string, { icon: string; cls: string; msg: string }> = {
+              falling: { icon: '📉', cls: 'error', msg: 'still sliding — hold off on singles from this set' },
+              forming: { icon: '〜', cls: 'muted', msg: 'slide slowing — floor forming, start watching want-list prices' },
+              floor: { icon: '🟢', cls: 'ok', msg: 'FLOOR — flat week; want-list buys from this set are on' },
+              rising: { icon: '↗', cls: 'ok', msg: 'floor is in and climbing — buy soon if buying' },
+              early: { icon: '🕐', cls: 'muted', msg: 'too little price history to call a floor yet' },
+            }
+            const v = FLOOR[f.state]
+            return (
+              <p key={f.set_code} style={{ margin: '0 0 0.6rem' }}>
+                {v.icon} <strong>{f.set_code} · {f.name}</strong>{' '}
+                <span className={v.cls}>{v.msg}</span>{' '}
+                <span className="muted" style={{ fontSize: '0.82rem' }}>
+                  ({f.drop_pct.toFixed(0)}% off its day-one total
+                  {f.week_pct != null ? `, ${f.week_pct > 0 ? '+' : ''}${f.week_pct.toFixed(1)}% this week` : ''},
+                  {' '}${f.total_now.toLocaleString()} vs ${f.total_peak.toLocaleString()} peak)
+                </span>
+              </p>
+            )
+          })}
           {b.market.sealed.length > 0 && (
             <table style={{ marginBottom: '0.6rem' }}>
               <thead><tr><th>Sealed</th><th>Price</th><th>SP × MSRP</th><th>Set CI</th><th>Read</th></tr></thead>

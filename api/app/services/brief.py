@@ -25,6 +25,77 @@ MIN_SNAPSHOTS_30D = 5  # snapshots needed before a CI is trustworthy
 MIN_TRIGGER_PRICE = 1.00  # CI triggers need a real price: a $0.04→$0.05 tick
                           # is a 25% "move" on a bulk common, not demand
 
+# New-set floor watch (added 2026-10-22 for Hyperia): a new set's singles
+# slide for weeks after street date as boxes get cracked — set 14 lost 54%
+# of its day-one total in six days. Until the slide flattens, want-list buys
+# from that set are overpays. Thresholds are week-over-week moves of the
+# set's total market value (sum of every card's price, holdings-free).
+FLOOR_WATCH_DAYS = 75    # watch sets released within this many days
+FLOOR_MIN_DAYS = 10      # priced days needed before calling a floor
+FLOOR_FLAT_PCT = 1.0     # |weekly move| ≤ this → floor reached
+FLOOR_SLOWING_PCT = 3.0  # falling slower than this/week → floor forming
+
+
+def _new_set_floor() -> list[dict]:
+    """Post-release price-floor state per recently released set.
+
+    Daily set total = sum of COALESCE(usd, usd_foil) across all the set's
+    printings (one tick per card per day) — same series as the Grafana set
+    market index. States: falling / forming / floor / rising, judged on the
+    week-over-week move; 'early' until FLOOR_MIN_DAYS of priced history.
+    """
+    rows = db.query(
+        """WITH new_sets AS (
+             SELECT id, code, name, released_at FROM sets
+             WHERE released_at > current_date - %(watch)s::int),
+           pc AS (
+             SELECT DISTINCT ON (ph.card_id, ph.captured_at::date)
+                    c.set_id, ph.captured_at::date AS d,
+                    COALESCE(ph.usd, ph.usd_foil, 0) AS p
+             FROM price_history ph
+             JOIN cards c ON c.id = ph.card_id
+             JOIN new_sets ns ON ns.id = c.set_id
+             ORDER BY ph.card_id, ph.captured_at::date, ph.captured_at DESC),
+           daily AS (
+             SELECT set_id, d, sum(p) AS v FROM pc GROUP BY 1, 2
+             HAVING sum(p) > 0)
+           SELECT ns.code, ns.name, ns.released_at,
+                  (SELECT count(*) FROM daily x WHERE x.set_id = ns.id) AS days,
+                  (SELECT x.v FROM daily x WHERE x.set_id = ns.id
+                   ORDER BY x.d DESC LIMIT 1) AS cur,
+                  (SELECT max(x.v) FROM daily x WHERE x.set_id = ns.id) AS peak,
+                  (SELECT x.v FROM daily x WHERE x.set_id = ns.id
+                     AND x.d <= (SELECT max(y.d) FROM daily y
+                                 WHERE y.set_id = ns.id) - 7
+                   ORDER BY x.d DESC LIMIT 1) AS week_ago
+           FROM new_sets ns ORDER BY ns.released_at DESC""",
+        {"watch": FLOOR_WATCH_DAYS})
+
+    out = []
+    for r in rows:
+        if not r["cur"] or not r["peak"]:
+            continue  # released but Lorcast hasn't listed prices yet
+        cur, peak = float(r["cur"]), float(r["peak"])
+        drop_pct = round(100 * (1 - cur / peak), 1)
+        wk_pct = round(100 * (cur / float(r["week_ago"]) - 1), 1) \
+            if r["week_ago"] else None
+        if r["days"] < FLOOR_MIN_DAYS or wk_pct is None:
+            state = "early"
+        elif wk_pct > FLOOR_FLAT_PCT:
+            state = "rising"
+        elif wk_pct >= -FLOOR_FLAT_PCT:
+            state = "floor"
+        elif wk_pct >= -FLOOR_SLOWING_PCT:
+            state = "forming"
+        else:
+            state = "falling"
+        out.append({"set_code": r["code"], "name": r["name"],
+                    "released_at": r["released_at"].isoformat(),
+                    "days_priced": r["days"], "total_now": round(cur),
+                    "total_peak": round(peak), "drop_pct": drop_pct,
+                    "week_pct": wk_pct, "state": state})
+    return out
+
 
 def _market_signals() -> dict:
     """SP×CI quadrant per sealed SKU + buy triggers on want-list singles.
@@ -168,6 +239,7 @@ def _market_signals() -> dict:
             x["trigger"] = "hot-set"  # box moving too — demand is real but priced in
 
     return {"sealed": sealed_out, "singles": rows[:12],
+            "new_set_floor": _new_set_floor(),
             "params": {"weekly_budget_usd": config.WEEKLY_BUDGET_USD,
                        "rotation_horizon_years": config.ROTATION_HORIZON_YEARS}}
 
@@ -348,6 +420,24 @@ def render_text(b: dict) -> str:
                                  for c in b["allocation_conflicts"])
                      + " — fix the decks or collection counts.")
     mkt = b.get("market") or {}
+    FLOOR_LINE = {
+        "falling": "📉 {code} {name}: still sliding — {drop:.0f}% off its day-one total "
+                   "(${cur:,} vs ${peak:,}), {wk:+.1f}%/wk — hold off on set-{code} singles",
+        "forming": "〜 {code} {name}: slide slowing ({wk:+.1f}% this week, {drop:.0f}% off peak) "
+                   "— floor forming, start watching want-list prices",
+        "floor":   "🟢 {code} {name} FLOOR: flat week ({wk:+.1f}%) after a {drop:.0f}% "
+                   "post-release drop — want-list buys from this set are on",
+        "rising":  "↗ {code} {name}: up {wk:+.1f}% this week ({drop:.0f}% off peak) — "
+                   "the floor is in and it's climbing; buy soon if buying",
+        "early":   "🕐 {code} {name}: {days}d of price data ({drop:.0f}% off day one) — "
+                   "too early to call a floor",
+    }
+    for f in mkt.get("new_set_floor", []):
+        lines.append(FLOOR_LINE[f["state"]].format(
+            code=f["set_code"], name=f["name"], drop=f["drop_pct"],
+            cur=f["total_now"], peak=f["total_peak"],
+            wk=f["week_pct"] if f["week_pct"] is not None else 0.0,
+            days=f["days_priced"]))
     for s in mkt.get("sealed", []):
         lines.append(f"Market: {s['name']} ${s['price']:.0f} = {s['sp']:.2f}× MSRP"
                      + (f", set CI {s['set_ci']:.2f}" if s["set_ci"] is not None else "")
